@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/code-review-hero.svg" alt="Code Review Agent — cinematic banner" width="100%"/>
+<img src="assets/hero-banner.svg" alt="Code Review Agent — cinematic banner" width="100%"/>
 
 <br/><br/>
 
@@ -13,8 +13,13 @@
 [![OpenRouter](https://img.shields.io/badge/OpenRouter-Nemotron%2070B%20Free-6C4EFF?style=for-the-badge)](https://openrouter.ai/)
 [![Anthropic](https://img.shields.io/badge/Anthropic-Claude%203.5%20Sonnet-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 [![Tests](https://img.shields.io/badge/Tests-Hypothesis%20Verified-2ea44f?style=for-the-badge&logo=pytest&logoColor=white)](#-testing)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-0F2027?style=for-the-badge)](#-cross-platform-setup-guide)
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=for-the-badge)](CONTRIBUTING.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=for-the-badge)](#-contributing)
+
+<br/>
+
+[![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows11&logoColor=white)](#-windows)
+[![macOS](https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white)](#-macos)
+[![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat-square&logo=linux&logoColor=black)](#-linux)
 
 <sub>⭐ If this project saves you a code review, consider starring it — it genuinely helps.</sub>
 
@@ -26,6 +31,13 @@
 
 <br/>
 
+<div align="center">
+<img src="assets/terminal-demo.svg" alt="Live terminal demo — repository discovery, AI review, deduplication, report generation" width="100%"/>
+<sub><i>A real run: clone → discover → review → merge → severity signal → report, end to end.</i></sub>
+</div>
+
+<br/>
+
 ## 📚 Table of Contents
 
 <table>
@@ -33,24 +45,24 @@
 <td width="50%" valign="top">
 
 - [✨ Features](#-features)
-- [🎬 Live Demo](#-live-demo)
 - [🏗️ Architecture](#️-architecture)
 - [⚙️ Requirements](#️-requirements)
-- [🌐 Cross-Platform Setup Guide](#-cross-platform-setup-guide)
+- [📦 Installation & Setup Guide](#-installation--setup-guide)
   - [🪟 Windows](#-windows)
   - [🍎 macOS](#-macos)
   - [🐧 Linux](#-linux)
+- [🖥️ Run the Web App Locally](#️-run-the-web-app-locally)
 
 </td>
 <td width="50%" valign="top">
 
-- [🖥️ Run the Web App Locally](#️-run-the-web-app-locally)
 - [🔑 Configuration](#-configuration)
 - [🚀 Usage](#-usage)
 - [🧪 Testing](#-testing)
 - [📁 Project Structure](#-project-structure)
 - [🗺️ Roadmap](#️-roadmap)
-- [🤝 Contributing](#-contributing) · [📄 License](#-license)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
 
 </td>
 </tr>
@@ -117,18 +129,6 @@ zero external viewer required.
 
 <br/>
 
-## 🎬 Live Demo
-
-<div align="center">
-
-<img src="assets/review-demo.svg" alt="Terminal walkthrough of a full repository review" width="100%"/>
-
-<sub>Real-time trace of <code>reviewagent review github.com/acme/api</code> — clone → discover → review → merge → signal → report.</sub>
-
-</div>
-
-<br/>
-
 ## 🏗️ Architecture
 
 ```mermaid
@@ -164,19 +164,19 @@ flowchart TD
 | 🐍 **Python** | 3.11+ |
 | 🌿 **Git** | Available on `PATH` |
 | 🔑 **API Key** | `OPENROUTER_API_KEY` *(free NVIDIA Nemotron 70B)* **or** `ANTHROPIC_API_KEY` |
-| 🖥️ **OS** | Windows 10/11 · macOS 12+ · any modern Linux distro |
+| 💻 **OS** | Windows 10/11 · macOS 12+ (Intel & Apple Silicon) · Any modern Linux distro |
 
 <br/>
 
-## 🌐 Cross-Platform Setup Guide
+## 📦 Installation & Setup Guide
 
 <div align="center">
-<img src="assets/platforms-banner.svg" alt="Windows, macOS, and Linux setup paths" width="100%"/>
+<img src="assets/platforms-banner.svg" alt="Cross-platform setup — Windows, macOS, Linux" width="100%"/>
 </div>
 
 <br/>
 
-Pick your operating system below — each guide is self-contained, from a bare machine to a running `reviewagent` command.
+Pick your operating system below — each guide is self-contained, from a clean machine to a working `reviewagent` command.
 
 <br/>
 
@@ -187,48 +187,43 @@ Pick your operating system below — each guide is self-contained, from a bare m
 
 <br/>
 
-**1. Install Python 3.11+ and Git** (via [winget](https://learn.microsoft.com/windows/package-manager/winget/), or download installers manually from [python.org](https://www.python.org/downloads/) and [git-scm.com](https://git-scm.com/download/win)):
+**1. Install prerequisites** *(skip anything you already have)*
 
 ```powershell
-winget install Python.Python.3.11
-winget install Git.Git
+# Using winget (built into Windows 10/11)
+winget install --id Python.Python.3.11 -e
+winget install --id Git.Git -e
 ```
 
-> ✅ During the Python installer, make sure **"Add python.exe to PATH"** is checked if you install manually.
+> No `winget`? Download Python from [python.org/downloads](https://www.python.org/downloads/) and Git from [git-scm.com](https://git-scm.com/download/win) instead. During Python setup, **check "Add python.exe to PATH."**
 
-**2. Clone the repository:**
+**2. Clone the repository**
 
 ```powershell
 git clone https://github.com/your-username/code-review-agent.git
 cd code-review-agent
 ```
 
-**3. Create and activate a virtual environment:**
+**3. Create and activate a virtual environment**
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 ```
 
-> ⚠️ If activation fails with *"running scripts is disabled on this system"*, allow local scripts for your session:
-> ```powershell
-> Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-> ```
+> If activation fails with an execution-policy error, run PowerShell as Administrator once:
+> `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
-**4. Install the package and set your API key:**
+**4. Install the package**
 
 ```powershell
 pip install -e ".[dev]"
-$Env:OPENROUTER_API_KEY = "sk-or-v1-..."
 ```
 
-**5. (Optional) Web app — Node.js via winget, then:**
+**5. Verify**
 
 ```powershell
-winget install OpenJS.NodeJS.LTS
-npm install
-Copy-Item .env.example .env
-npm run dev
+reviewagent --help
 ```
 
 </details>
@@ -237,54 +232,47 @@ npm run dev
 
 ### 🍎 macOS
 
-<details open>
-<summary><b>macOS 12+ (Apple Silicon &amp; Intel) — zsh setup</b></summary>
+<details>
+<summary><b>macOS 12+ — Intel & Apple Silicon</b></summary>
 
 <br/>
 
-**1. Install [Homebrew](https://brew.sh/)** if you don't already have it:
+**1. Install prerequisites via [Homebrew](https://brew.sh)**
 
 ```bash
+# Install Homebrew if you don't already have it
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
 
-**2. Install Python 3.11+ and Git:**
-
-```bash
 brew install python@3.11 git
 ```
 
-**3. Clone the repository:**
+**2. Clone the repository**
 
 ```bash
 git clone https://github.com/your-username/code-review-agent.git
 cd code-review-agent
 ```
 
-**4. Create and activate a virtual environment:**
+**3. Create and activate a virtual environment**
 
 ```bash
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 ```
 
-**5. Install the package and set your API key:**
+**4. Install the package**
 
 ```bash
 pip install -e ".[dev]"
-export OPENROUTER_API_KEY="sk-or-v1-..."
 ```
 
-> 💡 Add the `export` line to `~/.zshrc` so it persists across terminal sessions.
-
-**6. (Optional) Web app:**
+**5. Verify**
 
 ```bash
-brew install node
-npm install
-cp .env.example .env
-npm run dev
+reviewagent --help
 ```
+
+> ⚙️ **Apple Silicon (M1/M2/M3/M4) note:** everything here runs natively under arm64 — no Rosetta required for this project's pure-Python dependency set.
 
 </details>
 
@@ -292,58 +280,57 @@ npm run dev
 
 ### 🐧 Linux
 
-<details open>
-<summary><b>Debian / Ubuntu · Fedora · Arch — bash setup</b></summary>
+<details>
+<summary><b>Debian / Ubuntu · Fedora / RHEL · Arch</b></summary>
 
 <br/>
 
-**1. Install Python 3.11+, Git, and build tools:**
+**1. Install prerequisites**
 
 ```bash
 # Debian / Ubuntu
-sudo apt update && sudo apt install -y python3.11 python3.11-venv python3-pip git build-essential
+sudo apt update && sudo apt install -y python3.11 python3.11-venv python3-pip git
 
-# Fedora
-sudo dnf install -y python3.11 python3-pip git @development-tools
+# Fedora / RHEL
+sudo dnf install -y python3.11 python3-pip git
 
 # Arch
-sudo pacman -S --needed python python-pip git base-devel
+sudo pacman -S python git
 ```
 
-**2. Clone the repository:**
+**2. Clone the repository**
 
 ```bash
 git clone https://github.com/your-username/code-review-agent.git
 cd code-review-agent
 ```
 
-**3. Create and activate a virtual environment:**
+**3. Create and activate a virtual environment**
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 ```
 
-**4. Install the package and set your API key:**
+**4. Install the package**
 
 ```bash
 pip install -e ".[dev]"
-export OPENROUTER_API_KEY="sk-or-v1-..."
 ```
 
-> 💡 Add the `export` line to `~/.bashrc` or `~/.zshrc` so it persists across terminal sessions.
-
-**5. (Optional) Web app — via [nvm](https://github.com/nvm-sh/nvm) (recommended) or your distro's package manager:**
+**5. Verify**
 
 ```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-nvm install --lts
-npm install
-cp .env.example .env
-npm run dev
+reviewagent --help
 ```
 
 </details>
+
+<br/>
+
+<div align="center">
+<img src="assets/quickstart-flow.svg" alt="Quickstart pipeline — install, configure, run, report" width="100%"/>
+</div>
 
 <br/>
 
@@ -351,11 +338,29 @@ npm run dev
 
 This project runs as a regular Vite/Express application and does **not** require AI Studio.
 
-```bash
+<table>
+<tr><th>Windows (PowerShell)</th><th>macOS / Linux</th></tr>
+<tr>
+<td>
+
+```powershell
 npm install
-cp .env.example .env      # Windows PowerShell: Copy-Item .env.example .env
+Copy-Item .env.example .env
 npm run dev
 ```
+
+</td>
+<td>
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+</td>
+</tr>
+</table>
 
 Open **http://localhost:3000** in your browser.
 
@@ -373,7 +378,8 @@ Open **http://localhost:3000** in your browser.
 
 ```bash
 # 1. Get a free API key at https://openrouter.ai/keys
-export OPENROUTER_API_KEY="sk-or-v1-..."
+export OPENROUTER_API_KEY="sk-or-v1-..."      # macOS / Linux
+$env:OPENROUTER_API_KEY = "sk-or-v1-..."      # Windows PowerShell
 
 # Default model is nvidia/llama-3.1-nemotron-70b-instruct:free
 ```
@@ -386,7 +392,8 @@ export OPENROUTER_API_KEY="sk-or-v1-..."
 <br/>
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-api03-..."
+export ANTHROPIC_API_KEY="sk-ant-api03-..."   # macOS / Linux
+$env:ANTHROPIC_API_KEY = "sk-ant-api03-..."   # Windows PowerShell
 ```
 
 </details>
@@ -394,12 +401,6 @@ export ANTHROPIC_API_KEY="sk-ant-api03-..."
 <br/>
 
 ## 🚀 Usage
-
-<div align="center">
-<img src="assets/quickstart-flow.svg" alt="Install, configure, run, report pipeline" width="100%"/>
-</div>
-
-<br/>
 
 ### 1️⃣ Run a full repository review
 
@@ -477,8 +478,8 @@ code-review-agent/
 ├── README.md                   # Full architecture & CLI manual
 ├── .env.example                # Environment variables template
 ├── assets/                     # README banners & diagrams
-│   ├── code-review-hero.svg
-│   ├── review-demo.svg
+│   ├── hero-banner.svg
+│   ├── terminal-demo.svg
 │   ├── platforms-banner.svg
 │   └── quickstart-flow.svg
 ├── src/
