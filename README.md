@@ -394,6 +394,32 @@ hostname, such as `llm-code-review-agent.vercel.app`, and any custom domain.
 Keep `localhost` there for local development. In Authentication → Sign-in
 method, enable Google.
 
+## Firebase development
+
+The browser stores only project metadata in Firestore and uploads source content
+to Cloud Storage under the authenticated user's project path. Enable Authentication
+(Google and GitHub), Firestore, Storage, and App Check in the Firebase project.
+
+For local emulators, install the Firebase CLI and run:
+
+```bash
+firebase login
+firebase use llm-code-review-agent
+npm run emulators
+```
+
+Set `VITE_USE_FIREBASE_EMULATORS=true` in `.env` when running the Vite app locally.
+The required callback for Firebase GitHub authentication is:
+
+```text
+https://llm-code-review-agent.firebaseapp.com/__/auth/handler
+```
+
+The current Express API remains in place because it already owns the Gemini,
+OpenRouter, GitHub public-import, and Vercel function routes. Firebase Storage and
+Firestore persistence are best-effort and do not replace the existing AI provider
+server boundary.
+
 <br/>
 
 ## 🔑 Configuration

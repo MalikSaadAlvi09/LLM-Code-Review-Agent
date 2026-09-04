@@ -1,5 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, GoogleAuthProvider, GithubAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getStorage, connectStorageEmulator, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { 
   getFirestore, 
   collection, 
@@ -14,6 +16,7 @@ import {
   onSnapshot,
   serverTimestamp 
 } from 'firebase/firestore';
+import { connectFirestoreEmulator } from 'firebase/firestore';
 
 // Use local Vite variables when provided; keep the generated config as a fallback.
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -32,16 +35,37 @@ const configuredFirebase = {
 const app = getApps().length > 0 ? getApp() : initializeApp(configuredFirebase);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+const githubProvider = new GithubAuthProvider();
+githubProvider.addScope('read:user');
+githubProvider.addScope('user:email');
+
+if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectStorageEmulator(storage, '127.0.0.1', 9199);
+}
+
+if (import.meta.env.PROD && import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY) {
+  initializeAppCheck(app, { provider: new ReCaptchaV3Provider(import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
+}
 
 export { 
   app, 
   auth, 
   db, 
+  storage,
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
   googleProvider, 
+  githubProvider,
   signInWithPopup, 
-  fbSignOut, 
+  fbSignOut,
+  signInWithRedirect,
+  getRedirectResult,
   onAuthStateChanged,
   collection, 
   doc, 

@@ -2,11 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { Archive, Check, ChevronDown, ChevronRight, FileCode, FolderOpen, Github, Loader2, Search, Trash2, UploadCloud } from 'lucide-react';
 import { IMPORT_LIMITS, ImportedCodeFile, ImportedProject, ProjectSourceType } from '../types';
+import { persistImportedProject } from '../lib/firebaseProjects';
 
 interface CodebaseImportProps {
   project: ImportedProject | null;
   onProjectChange: (project: ImportedProject | null) => void;
   onReviewProject?: () => void;
+  userUid?: string;
+  onConnectGitHub?: () => Promise<void>;
 }
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
@@ -77,7 +80,7 @@ function makeProject(name: string, sourceType: ProjectSourceType, files: Importe
   return { id: crypto.randomUUID(), name, sourceType, files, repository, createdAt: new Date().toISOString() };
 }
 
-export function CodebaseImport({ project, onProjectChange, onReviewProject }: CodebaseImportProps) {
+export function CodebaseImport({ project, onProjectChange, onReviewProject, userUid, onConnectGitHub }: CodebaseImportProps) {
   const folderInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
@@ -100,7 +103,9 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject }: Co
       const imported = await Promise.all(entries.map(entry => fileToImported(entry.file, entry.path)));
       const existing = new Set(project?.files.map(file => file.path) || []);
       const files = [...(project?.files || []), ...imported.filter(file => !existing.has(file.path))];
-      onProjectChange(makeProject(project?.name || name, sourceType, files, project?.repository));
+      const nextProject = makeProject(project?.name || name, sourceType, files, project?.repository);
+      onProjectChange(nextProject);
+      if (userUid) void persistImportedProject(userUid, nextProject).catch(() => setError('Imported locally, but Firebase Storage synchronization failed.'));
     } catch (err: any) { setError(err.message || 'Could not import these files.'); }
     finally { setProcessing(false); }
   };
@@ -143,7 +148,9 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject }: Co
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || `GitHub import failed (HTTP ${response.status}).`);
       const files = (payload.files || []) as ImportedCodeFile[];
-      onProjectChange(makeProject(payload.repository?.name || parts[1], 'github', files, payload.repository));
+      const nextProject = makeProject(payload.repository?.name || parts[1], 'github', files, payload.repository);
+      onProjectChange(nextProject);
+      if (userUid) void persistImportedProject(userUid, nextProject).catch(() => setError('Imported locally, but Firebase Storage synchronization failed.'));
       setGithubUrl('');
     } catch (err: any) { setError(err.message || 'Could not import this GitHub repository.'); }
   };
@@ -163,7 +170,7 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject }: Co
       <button onClick={() => zipInput.current?.click()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><Archive className="w-4 h-4 text-amber-600" />Upload ZIP</button>
       <button onClick={() => filesInput.current?.click()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><UploadCloud className="w-4 h-4 text-emerald-600" />Upload Files</button>
       <button onClick={() => document.getElementById('github-url-import')?.focus()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><Github className="w-4 h-4 text-neutral-800" />Import GitHub</button>
-      <button onClick={() => { window.location.href = '/api/github/auth'; }} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><Github className="w-4 h-4 text-neutral-800" />Connect GitHub</button>
+      <button onClick={() => { if (onConnectGitHub) void onConnectGitHub().catch((err: any) => setError(err.message || 'GitHub sign-in failed.')); else setError('Sign in is required to connect GitHub.'); }} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><Github className="w-4 h-4 text-neutral-800" />Connect GitHub</button>
       <button onClick={() => document.getElementById('paste-code-import')?.focus()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><FileCode className="w-4 h-4 text-purple-600" />Paste Code</button>
     </div>
     <input ref={folderInput} type="file" webkitdirectory="true" directory="true" multiple hidden onChange={event => handleFileList(event.target.files, 'folder', 'Imported folder')} />

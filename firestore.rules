@@ -39,6 +39,18 @@ service cloud.firestore {
       match /settings/{settingId} {
         allow read, write: if isOwner(userId);
       }
+
+      match /projects/{projectId} {
+        allow read, write: if isOwner(userId);
+
+        match /{document=**} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+
+      match /githubConnections/{connectionId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
     // Public demo reviews readable by everyone, writable by owners

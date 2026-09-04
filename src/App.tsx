@@ -39,7 +39,7 @@ import { ImportedProject } from './types';
 import { useAuth } from './context/AuthContext';
 
 export default function App() {
-  const { user, signInWithGoogle, signOut, openRouterConfig } = useAuth();
+  const { user, signInWithGoogle, signInWithGitHub, signOut, openRouterConfig } = useAuth();
   const [activeTab, setActiveTab] = useState<'simulator' | 'chat' | 'voice' | 'grounding' | 'images' | 'chunking' | 'code' | 'report' | 'cli' | 'settings'>('simulator');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [importedProject, setImportedProject] = useState<ImportedProject | null>(null);
@@ -269,7 +269,7 @@ export default function App() {
 
       {/* Main Workspace Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
-        <CodebaseImport project={importedProject} onProjectChange={setImportedProject} onReviewProject={() => setActiveTab('simulator')} />
+        <CodebaseImport project={importedProject} onProjectChange={setImportedProject} onReviewProject={() => setActiveTab('simulator')} userUid={user?.uid} onConnectGitHub={signInWithGitHub} />
         {activeTab === 'simulator' && <ReviewRunner project={importedProject} />}
         {activeTab === 'settings' && <OpenRouterSettings />}
         {activeTab === 'chat' && <GeminiChat />}

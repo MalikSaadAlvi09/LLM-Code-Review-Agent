@@ -2,7 +2,9 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { 
   auth, 
   googleProvider, 
+  githubProvider,
   signInWithPopup, 
+  signInWithRedirect,
   fbSignOut, 
   onAuthStateChanged, 
   db, 
@@ -23,6 +25,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
   saveReviewToCloud: (title: string, sampleName: string, findings: any[], code: string, model: string) => Promise<string | null>;
   saveChatToCloud: (title: string, role: string, model: string, messages: any[]) => Promise<string | null>;
@@ -167,6 +170,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithGitHub = async () => {
+    try {
+      await signInWithPopup(auth, githubProvider);
+    } catch (error: any) {
+      if (error?.code === 'auth/popup-blocked') {
+        await signInWithRedirect(auth, githubProvider);
+        return;
+      }
+      if (error?.code === 'auth/popup-closed-by-user') throw new Error('GitHub sign-in was cancelled.');
+      if (error?.code === 'auth/account-exists-with-different-credential') throw new Error('This email already uses another sign-in provider. Sign in with that provider first.');
+      throw new Error(error?.message || 'GitHub sign-in failed.');
+    }
+  };
+
   const saveReviewToCloud = async (title: string, sampleName: string, findings: any[], code: string, model: string): Promise<string | null> => {
     if (!user) return null;
     try {
@@ -269,6 +286,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         signInWithGoogle,
+        signInWithGitHub,
         signOut,
         saveReviewToCloud,
         saveChatToCloud,
