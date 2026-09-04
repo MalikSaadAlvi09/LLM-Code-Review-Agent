@@ -328,8 +328,7 @@ reviewagent --help
 <br/>
 
 <div align="center">
-<img src="assets/quickstart-flow.svg" alt="Quickstart pipeline — install, configure, run, report" width="100%"/>
-</div>
+<img src="./quickstart-flow.svg" alt="Quickstart pipeline — install, configure, run, report" width="100%"/></div>
 
 <br/>
 
