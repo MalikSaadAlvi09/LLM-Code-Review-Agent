@@ -530,12 +530,25 @@ git checkout -b feat/your-feature-name
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
 
-<br/>
+---
 
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:2C5364,50:203A43,100:0F2027&height=120&section=footer" width="100%"/>
+<img
+  src="./professional-footer.png"
+  alt="Code Review Agent — Review Deeper, Ship Safer"
+  width="100%"
+/>
 
-<sub>Built with 🧠 structured LLM reasoning · ✅ property-based testing · 📝 clean Markdown output</sub>
+<br/><br/>
+
+[![Get Started](https://img.shields.io/badge/GET%20STARTED-Installation-58A6FF?style=for-the-badge&logo=rocket&logoColor=white)](#-installation--setup-guide)
+[![View Usage](https://img.shields.io/badge/EXPLORE-CLI%20Usage-6C4EFF?style=for-the-badge&logo=gnubash&logoColor=white)](#-usage)
+[![Run Tests](https://img.shields.io/badge/VERIFY-Test%20Suite-2EA44F?style=for-the-badge&logo=pytest&logoColor=white)](#-testing)
+[![Contribute](https://img.shields.io/badge/CONTRIBUTE-Pull%20Request-D97757?style=for-the-badge&logo=github&logoColor=white)](#-contributing)
+
+<br/><br/>
+
+<sub>Structured AI review · Line-safe context · Deduplicated findings · Grounded conversations</sub>
 
 </div>
