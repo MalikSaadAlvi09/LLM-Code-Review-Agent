@@ -34,12 +34,15 @@ import { GroundingHub } from './components/GroundingHub';
 import { ImageStudio } from './components/ImageStudio';
 import { CloudDrawer } from './components/CloudDrawer';
 import { OpenRouterSettings } from './components/OpenRouterSettings';
+import { CodebaseImport } from './components/CodebaseImport';
+import { ImportedProject } from './types';
 import { useAuth } from './context/AuthContext';
 
 export default function App() {
   const { user, signInWithGoogle, signOut, openRouterConfig } = useAuth();
   const [activeTab, setActiveTab] = useState<'simulator' | 'chat' | 'voice' | 'grounding' | 'images' | 'chunking' | 'code' | 'report' | 'cli' | 'settings'>('simulator');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [importedProject, setImportedProject] = useState<ImportedProject | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
@@ -266,7 +269,8 @@ export default function App() {
 
       {/* Main Workspace Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6">
-        {activeTab === 'simulator' && <ReviewRunner />}
+        <CodebaseImport project={importedProject} onProjectChange={setImportedProject} onReviewProject={() => setActiveTab('simulator')} />
+        {activeTab === 'simulator' && <ReviewRunner project={importedProject} />}
         {activeTab === 'settings' && <OpenRouterSettings />}
         {activeTab === 'chat' && <GeminiChat />}
         {activeTab === 'voice' && <VoiceStudio />}

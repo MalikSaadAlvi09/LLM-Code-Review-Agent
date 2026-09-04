@@ -3,12 +3,13 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
-import { randomUUID } from 'crypto';
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 
 dotenv.config();
 
 let aiClient: GoogleGenAI | null = null;
 const PORT = 3000;
+const githubSessions = new Map<string, { token: string; expiresAt: number }>();
 
 function getAI(): GoogleGenAI {
   if (!aiClient) {
@@ -45,6 +46,23 @@ function normalizeReview(review: any) {
     qualityScore: typeof review.qualityScore === 'number' ? review.qualityScore : 0,
     verdict: review.verdict || 'Needs Improvement',
   };
+}
+
+function githubToken(req: any) {
+  const cookies = String(req.headers.cookie || '').split(';').map((value: string) => value.trim().split('='));
+  const sessionId = cookies.find((cookie: string[]) => cookie[0] === 'github_session')?.[1];
+  const session = sessionId ? githubSessions.get(sessionId) : undefined;
+  if (!session || session.expiresAt < Date.now()) return undefined;
+  return session.token;
+}
+
+function githubState(value: string) {
+  const secret = process.env.GITHUB_OAUTH_STATE_SECRET || process.env.SESSION_SECRET;
+  if (!secret) return false;
+  const [timestamp, nonce, signature] = value.split('.');
+  if (!timestamp || !nonce || !signature || Date.now() - Number(timestamp) > 10 * 60 * 1000) return false;
+  const expected = createHmac('sha256', secret).update(`${timestamp}.${nonce}`).digest('hex');
+  return signature.length === expected.length && timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
 export async function createApp() {
@@ -1001,6 +1019,85 @@ You MUST respond strictly in valid JSON without extra conversational preamble. F
     } catch (error: any) {
       console.error('Follow-up API error:', error.message);
       return res.status(502).json({ success: false, error: 'The follow-up answer could not be completed.', details: process.env.NODE_ENV === 'production' ? undefined : error.message });
+    }
+  });
+
+  app.get('/api/github/auth', (req, res) => {
+    const { GITHUB_CLIENT_ID, GITHUB_REDIRECT_URI, GITHUB_OAUTH_STATE_SECRET, SESSION_SECRET } = process.env;
+    if (!GITHUB_CLIENT_ID || !GITHUB_REDIRECT_URI || !(GITHUB_OAUTH_STATE_SECRET || SESSION_SECRET)) {
+      return res.status(503).json({ error: 'GitHub account connection requires OAuth environment variables.' });
+    }
+    const timestamp = String(Date.now());
+    const nonce = randomBytes(24).toString('hex');
+    const state = `${timestamp}.${nonce}.${createHmac('sha256', GITHUB_OAUTH_STATE_SECRET || SESSION_SECRET!).update(`${timestamp}.${nonce}`).digest('hex')}`;
+    const params = new URLSearchParams({ client_id: GITHUB_CLIENT_ID, redirect_uri: GITHUB_REDIRECT_URI, scope: 'read:user repo', state });
+    return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
+  });
+
+  app.get('/api/github/callback', async (req, res) => {
+    try {
+      if (typeof req.query.state !== 'string' || !githubState(req.query.state) || typeof req.query.code !== 'string') throw new Error('Invalid or expired GitHub OAuth state.');
+      const response = await fetch('https://github.com/login/oauth/access_token', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: process.env.GITHUB_CLIENT_ID, client_secret: process.env.GITHUB_CLIENT_SECRET, code: req.query.code, redirect_uri: process.env.GITHUB_REDIRECT_URI }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.access_token) throw new Error(payload.error_description || 'GitHub authorization failed.');
+      const sessionId = randomUUID();
+      githubSessions.set(sessionId, { token: payload.access_token, expiresAt: Date.now() + 8 * 60 * 60 * 1000 });
+      return res.setHeader('Set-Cookie', `github_session=${sessionId}; HttpOnly; SameSite=Lax; Path=/api/github; ${process.env.NODE_ENV === 'production' ? 'Secure' : ''}`).redirect('/?github=connected');
+    } catch (error: any) {
+      return res.status(400).send(`GitHub connection failed: ${error.message}`);
+    }
+  });
+
+  app.get('/api/github/repos', async (req, res) => {
+    const token = githubToken(req);
+    if (!token) return res.status(401).json({ error: 'GitHub is not connected or the session has expired.' });
+    const response = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated', { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return res.status(response.status).json({ error: payload.message || 'Could not load GitHub repositories.' });
+    return res.json({ repositories: payload.map((repo: any) => ({ id: repo.id, name: repo.name, fullName: repo.full_name, url: repo.html_url, defaultBranch: repo.default_branch, isPrivate: repo.private })) });
+  });
+
+  app.post('/api/github/disconnect', (req, res) => {
+    const cookies = String(req.headers.cookie || '').split(';').map((value: string) => value.trim().split('='));
+    const sessionId = cookies.find((cookie: string[]) => cookie[0] === 'github_session')?.[1];
+    if (sessionId) githubSessions.delete(sessionId);
+    return res.setHeader('Set-Cookie', 'github_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/api/github').json({ success: true });
+  });
+
+  app.post('/api/github/import', async (req, res) => {
+    const { url } = req.body;
+    try {
+      const parsed = new URL(String(url || ''));
+      if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') throw new Error('Use a valid HTTPS github.com repository URL.');
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      if (parts.length < 2) throw new Error('Use https://github.com/owner/repository.');
+      const owner = parts[0];
+      const repository = parts[1].replace(/\.git$/i, '');
+      const branch = parts[2] === 'tree' && parts[3] ? parts.slice(3).join('/') : undefined;
+      const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+      const token = githubToken(req) || process.env.GITHUB_TOKEN;
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const metadataResponse = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`, { headers });
+      const metadata = await metadataResponse.json().catch(() => ({}));
+      if (!metadataResponse.ok) throw new Error(metadata.message || `GitHub returned HTTP ${metadataResponse.status}`);
+      const selectedBranch = branch || metadata.default_branch;
+      const treeResponse = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/git/trees/${encodeURIComponent(selectedBranch)}?recursive=1`, { headers });
+      const tree = await treeResponse.json().catch(() => ({}));
+      if (!treeResponse.ok) throw new Error(tree.message || `Could not load branch ${selectedBranch}`);
+      const candidates = (tree.tree || []).filter((entry: any) => entry.type === 'blob' && typeof entry.path === 'string').slice(0, 5000);
+      const allowed = /\.(py|js|jsx|ts|tsx|java|c|h|cc|cpp|hpp|cs|go|rs|php|rb|swift|kt|dart|html|css|scss|sql|sh|bash|ps1|json|ya?ml|xml|md|toml|tf)$/i;
+      const ignored = /(^|\/)(\.git|\.github|node_modules|vendor|dist|build|coverage|\.next|\.nuxt|\.cache|venv|\.venv|env|__pycache__|\.pytest_cache|\.mypy_cache|\.idea|\.vscode|target|bin|obj|Pods|DerivedData)(\/|$)|\.min\.js$|\.map$|\.lock$|\.log$|\.pyc$|\.class$/i;
+      const files = (await Promise.all(candidates.filter((entry: any) => allowed.test(entry.path) && !ignored.test(entry.path)).slice(0, 100).map(async (entry: any) => {
+        const response = await fetch(`https://raw.githubusercontent.com/${owner}/${repository}/${encodeURIComponent(selectedBranch)}/${entry.path.split('/').map(encodeURIComponent).join('/')}`, { headers: { Accept: 'text/plain' } });
+        if (!response.ok) return null;
+        const content = await response.text();
+        if (content.includes('\0') || content.length > 2 * 1024 * 1024) return null;
+        const dot = entry.path.lastIndexOf('.');
+        return { id: randomUUID(), path: entry.path, name: entry.path.split('/').pop(), extension: dot >= 0 ? entry.path.slice(dot).toLowerCase() : '', language: 'text', size: content.length, content, selected: true, status: 'ready' };
+      }))).filter(Boolean);
+      return res.json({ repository: { owner, name: repository, url: parsed.toString(), branch: selectedBranch, commitSha: tree.sha, isPrivate: metadata.private }, files });
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message || 'GitHub repository import failed.' });
     }
   });
 

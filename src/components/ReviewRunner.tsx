@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Play, 
   Sparkles, 
@@ -22,7 +22,7 @@ import {
   Lock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { ChatMessage, ReviewResult, ReviewSession } from '../types';
+import { ChatMessage, ImportedProject, ReviewResult, ReviewSession } from '../types';
 
 interface Finding {
   line: number;
@@ -133,7 +133,7 @@ const AVAILABLE_MODELS = [
   },
 ];
 
-export function ReviewRunner() {
+export function ReviewRunner({ project }: { project?: ImportedProject | null }) {
   const { user, saveReviewToCloud, signInWithGoogle, openRouterConfig } = useAuth();
   const [activeModel, setActiveModel] = useState(
     openRouterConfig.providerType === 'openrouter' 
@@ -149,6 +149,22 @@ export function ReviewRunner() {
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'reviewing' | 'ready' | 'asking' | 'error'>('idle');
   const [reviewSession, setReviewSession] = useState<ReviewSession | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewProgress, setReviewProgress] = useState<string | null>(null);
+
+  useEffect(() => {
+    const importedFile = project?.files.find(file => file.status === 'ready' && file.selected);
+    if (importedFile) {
+      setActiveSample(importedFile.path);
+      setCode(importedFile.content);
+      setFindings([]);
+      setSummary(null);
+      setMessages([]);
+      setReviewSession(null);
+      setSessionStatus('idle');
+      setReviewError(null);
+      setReviewProgress(null);
+    }
+  }, [project]);
 
   // Gemini Intelligence Extra Tasks
   const [activeIntelTab, setActiveIntelTab] = useState<'review' | 'refactor' | 'tests' | 'security'>('review');
@@ -201,6 +217,7 @@ export function ReviewRunner() {
     setIsReviewing(true);
     setSessionStatus('reviewing');
     setReviewError(null);
+    setReviewProgress(null);
     setFindings([]);
     setSummary(null);
     setIntelResultText(null);
@@ -210,40 +227,61 @@ export function ReviewRunner() {
       const effectiveModel = isOpenRouterModel
         ? (openRouterConfig.customModelName || openRouterConfig.selectedModel || activeModel)
         : activeModel;
-      const res = await fetch(endpoint, {
+      const reviewInputs = project
+        ? project.files.filter(file => file.status === 'ready' && file.selected).slice(0, 100).map(file => ({ path: file.path, content: file.content }))
+        : [{ path: activeSample, content: code }];
+      if (!reviewInputs.length) throw new Error('Select at least one supported file to review.');
+
+      const reviews: { path: string; review: any; sessionId?: string }[] = [];
+      for (let index = 0; index < reviewInputs.length; index++) {
+        const reviewInput = reviewInputs[index];
+        setReviewProgress(`Reviewing files: ${index + 1}/${reviewInputs.length}`);
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            code,
-            filePath: activeSample,
+            code: reviewInput.content,
+            filePath: reviewInput.path,
             task: 'review',
             model: effectiveModel,
             temperature: openRouterConfig.temperature ?? 0.2,
           })
         });
-      const payload = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(payload?.error || `Review request failed (HTTP ${res.status}).`);
-      const review = payload?.review || payload?.structured;
-      if (!review || !Array.isArray(review.findings)) throw new Error('The review response was missing structured findings.');
+        const payload = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(payload?.error || `Review request failed (HTTP ${res.status}).`);
+        const review = payload?.review || payload?.structured;
+        if (!review || !Array.isArray(review.findings)) throw new Error(`The review response for ${reviewInput.path} was invalid.`);
+        reviews.push({ path: reviewInput.path, review, sessionId: payload.sessionId });
+      }
+
+      const combinedFindings = reviews.flatMap(item => item.review.findings.map((finding: Finding) => ({ ...finding, title: reviews.length > 1 ? `[${item.path}] ${finding.title}` : finding.title })));
+      const averageScore = Math.round(reviews.reduce((total, item) => total + (item.review.qualityScore || 0), 0) / reviews.length);
+      const combinedReview = {
+        summary: reviews.length > 1 ? `Reviewed ${reviews.length} files successfully.` : reviews[0].review.summary,
+        findings: combinedFindings,
+        qualityScore: averageScore,
+        verdict: combinedFindings.some(finding => finding.severity === 'bug') ? 'Needs Improvement' : (reviews[0].review.verdict || 'Approved'),
+      };
 
       const session: ReviewSession = {
-        id: payload.sessionId || crypto.randomUUID(),
+        id: reviews[0].sessionId || crypto.randomUUID(),
         filename: activeSample,
-        sourceCode: code,
+        sourceCode: reviewInputs.map(input => `# ${input.path}\n${input.content}`).join('\n\n'),
         model: effectiveModel,
-        review: review as ReviewResult,
-        messages: [{ role: 'assistant', content: `Review complete for ${activeSample} via **${selectedModelObj.name}**.` }],
+        review: combinedReview as ReviewResult,
+        messages: [{ role: 'assistant', content: `Review complete for ${reviews.length} file${reviews.length === 1 ? '' : 's'} via **${selectedModelObj.name}**.` }],
         createdAt: new Date().toISOString(),
       };
       setReviewSession(session);
-      setFindings(review.findings);
-      const summ = `[${selectedModelObj.name}] ${review.summary || `Identified ${review.findings.length} findings.`} (Quality Score: ${review.qualityScore ?? 0}/100)`;
+      setFindings(combinedFindings);
+      const summ = `[${selectedModelObj.name}] ${combinedReview.summary} (Quality Score: ${averageScore}/100)`;
       setSummary(summ);
       setMessages(session.messages);
       setSessionStatus('ready');
+      setReviewProgress(null);
 
       if (user) {
-        const savedId = await saveReviewToCloud(`Review: ${activeSample}`, activeSample, review.findings, code, selectedModelObj.name);
+        const savedId = await saveReviewToCloud(`Review: ${activeSample}`, activeSample, combinedFindings, session.sourceCode, selectedModelObj.name);
         if (!savedId) setCloudStatus('Review completed, but cloud synchronization failed.');
       }
     } catch (err: any) {
@@ -526,7 +564,7 @@ export function ReviewRunner() {
               {isReviewing ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Reviewing with {selectedModelObj.name}...</span>
+                  <span>{reviewProgress || `Reviewing with ${selectedModelObj.name}...`}</span>
                 </>
               ) : (
                 <>

@@ -28,6 +28,45 @@ export interface ReviewSession {
   createdAt: string;
 }
 
+export type ProjectSourceType = 'folder' | 'zip' | 'files' | 'github' | 'pasted';
+
+export interface ImportedCodeFile {
+  id: string;
+  path: string;
+  name: string;
+  extension: string;
+  language: string;
+  size: number;
+  content: string;
+  selected: boolean;
+  status: 'ready' | 'ignored' | 'unsupported' | 'error';
+  reason?: string;
+}
+
+export interface ImportedProject {
+  id: string;
+  name: string;
+  sourceType: ProjectSourceType;
+  files: ImportedCodeFile[];
+  repository?: {
+    owner: string;
+    name: string;
+    url: string;
+    branch: string;
+    commitSha?: string;
+    isPrivate?: boolean;
+  };
+  createdAt: string;
+}
+
+export const IMPORT_LIMITS = {
+  maxSingleFileBytes: 2 * 1024 * 1024,
+  maxArchiveBytes: 50 * 1024 * 1024,
+  maxExtractedBytes: 200 * 1024 * 1024,
+  maxFileCount: 5000,
+  maxReviewFilesPerRequest: 100,
+} as const;
+
 export interface OpenRouterModelInfo {
   id: string;
   name: string;
