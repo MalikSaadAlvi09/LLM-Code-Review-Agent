@@ -1,12 +1,11 @@
 {
-  "projectId": "ai-studio-applet-webapp-38fc7",
-  "appId": "1:529156650675:web:bb9ddc8484fb2a356462c6",
-  "apiKey": "AIzaSyAhmjogzHhbPgyJR2FVfLwZbSKBoDuNHUs",
-  "authDomain": "ai-studio-applet-webapp-38fc7.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-llmcodereviewage-085d3373-1b4a-4e7c-969c-c93a791d103b",
-  "storageBucket": "ai-studio-applet-webapp-38fc7.firebasestorage.app",
-  "messagingSenderId": "529156650675",
-  "measurementId": "",
-  "oAuthClientId": "529156650675-c7did7gdqr8d47rg24f5tgt1a5l8b089.apps.googleusercontent.com",
+  "projectId": "llm-code-review-agent",
+  "appId": "1:995584166586:web:b6aec82c73352b0fa01083",
+  "apiKey": "AIzaSyAgOYib3w45pq7f2A-VKBvpDyfbbC8jvBI",
+  "authDomain": "llm-code-review-agent.firebaseapp.com",
+  "storageBucket": "llm-code-review-agent.firebasestorage.app",
+  "messagingSenderId": "995584166586",
+  "measurementId": "G-DF9JZTPC7F",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

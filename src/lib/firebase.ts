@@ -31,7 +31,7 @@ const configuredFirebase = {
 
 const app = getApps().length > 0 ? getApp() : initializeApp(configuredFirebase);
 const auth = getAuth(app);
-const db = getFirestore(app, configuredFirebase.firestoreDatabaseId || undefined);
+const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
