@@ -7,6 +7,8 @@ import { createServer as createViteServer } from 'vite';
 dotenv.config();
 
 let aiClient: GoogleGenAI | null = null;
+const PORT = 3000;
+
 function getAI(): GoogleGenAI {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -18,9 +20,8 @@ function getAI(): GoogleGenAI {
   return aiClient;
 }
 
-async function startServer() {
+export async function createApp() {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -951,12 +952,19 @@ You MUST respond strictly in valid JSON without extra conversational preamble. F
     });
   }
 
+  return app;
+}
+
+async function startServer() {
+  const app = await createApp();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`LLM Code Review Agent Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+if (!process.env.VERCEL) {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

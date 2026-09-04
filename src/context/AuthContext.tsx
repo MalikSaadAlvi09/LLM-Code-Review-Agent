@@ -144,7 +144,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       console.error('Google Sign In Error:', error);
-      throw error;
+      const code = error?.code || 'unknown';
+      const messages: Record<string, string> = {
+        'auth/popup-blocked': 'The sign-in popup was blocked. Allow popups for localhost and try again.',
+        'auth/unauthorized-domain': 'localhost is not authorized in Firebase Authentication settings.',
+        'auth/operation-not-allowed': 'Google sign-in is not enabled in Firebase Authentication.',
+        'auth/popup-closed-by-user': 'The Google sign-in window was closed before completing sign-in.',
+      };
+      throw new Error(messages[code] || `Google sign-in failed (${code}). Check the browser console for details.`);
     }
   };
 

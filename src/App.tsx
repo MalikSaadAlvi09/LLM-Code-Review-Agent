@@ -40,6 +40,16 @@ export default function App() {
   const { user, signInWithGoogle, signOut, openRouterConfig } = useAuth();
   const [activeTab, setActiveTab] = useState<'simulator' | 'chat' | 'voice' | 'grounding' | 'images' | 'chunking' | 'code' | 'report' | 'cli' | 'settings'>('simulator');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const handleGoogleSignIn = async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      setAuthError(error.message || 'Google sign-in failed.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-neutral-100/60 text-neutral-900 flex flex-col font-sans antialiased">
@@ -114,7 +124,7 @@ export default function App() {
             ) : (
               <button
                 id="google-signin-btn"
-                onClick={signInWithGoogle}
+                onClick={handleGoogleSignIn}
                 className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-baloo font-bold flex items-center gap-1.5 shadow-xs transition"
               >
                 <LogIn className="w-4 h-4" />
@@ -123,6 +133,12 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {authError && (
+          <div className="max-w-7xl mx-auto mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" role="alert">
+            {authError}
+          </div>
+        )}
 
         {/* View Navigation Tabs */}
         <div className="max-w-7xl mx-auto mt-3 pt-2 border-t border-neutral-100 flex items-center justify-start overflow-x-auto pb-1 gap-1.5 font-baloo font-bold">

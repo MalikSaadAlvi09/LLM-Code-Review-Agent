@@ -362,8 +362,37 @@ npm run dev
 
 Open **http://localhost:3000** in your browser.
 
-> ⚠️ Put your real `GEMINI_API_KEY` or `OPENROUTER_API_KEY` only in `.env` — `.env` is git-ignored.
+> Put your real `GEMINI_API_KEY` or `OPENROUTER_API_KEY` only in `.env` — `.env` is git-ignored.
 > To publish the source on GitHub, commit `.env.example`, **never** `.env`.
+
+## Deploy to Vercel
+
+Import this GitHub repository into Vercel. Vercel uses `npm run build`, publishes
+the Vite output from `dist`, and serves the Express API through the Vercel
+function in `api/[...path].ts`.
+
+Add these environment variables in Vercel Project Settings → Environment Variables:
+
+```text
+GEMINI_API_KEY=your-gemini-api-key
+OPENROUTER_API_KEY=your-openrouter-api-key
+OPENROUTER_MODEL=nvidia/nemotron-3.5-lightning:free
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+APP_URL=https://your-project.vercel.app
+VITE_FIREBASE_API_KEY=your-firebase-web-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-messaging-sender-id
+VITE_FIREBASE_APP_ID=your-firebase-app-id
+VITE_FIREBASE_MEASUREMENT_ID=
+```
+
+Enable the variables for Production and Preview, then redeploy. In Firebase
+Console → Authentication → Settings → Authorized domains, add your Vercel
+hostname, such as `llm-code-review-agent.vercel.app`, and any custom domain.
+Keep `localhost` there for local development. In Authentication → Sign-in
+method, enable Google.
 
 <br/>
 
