@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/hero-banner.svg" alt="Code Review Agent — cinematic banner" width="100%"/>
+<img src="./hero-banner.svg" alt="Code Review Agent — cinematic banner" width="100%"/>
 
 <br/><br/>
 
@@ -32,7 +32,7 @@
 <br/>
 
 <div align="center">
-<img src="assets/terminal-demo.svg" alt="Live terminal demo — repository discovery, AI review, deduplication, report generation" width="100%"/>
+<img src="./terminal-demo.svg" alt="Live terminal demo — repository discovery, AI review, deduplication, report generation" width="100%"/>
 <sub><i>A real run: clone → discover → review → merge → severity signal → report, end to end.</i></sub>
 </div>
 
@@ -171,8 +171,7 @@ flowchart TD
 ## 📦 Installation & Setup Guide
 
 <div align="center">
-<img src="assets/platforms-banner.svg" alt="Cross-platform setup — Windows, macOS, Linux" width="100%"/>
-</div>
+<img src="./platforms-banner.svg" alt="Cross-platform setup — Windows, macOS, Linux" width="100%"/></div>
 
 <br/>
 
