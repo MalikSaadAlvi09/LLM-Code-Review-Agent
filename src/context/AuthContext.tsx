@@ -147,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const code = error?.code || 'unknown';
       const messages: Record<string, string> = {
         'auth/popup-blocked': 'The sign-in popup was blocked. Allow popups for localhost and try again.',
-        'auth/unauthorized-domain': 'localhost is not authorized in Firebase Authentication settings.',
+        'auth/unauthorized-domain': `${window.location.hostname} is not authorized in Firebase Authentication settings.`,
         'auth/operation-not-allowed': 'Google sign-in is not enabled in Firebase Authentication.',
         'auth/popup-closed-by-user': 'The Google sign-in window was closed before completing sign-in.',
       };
