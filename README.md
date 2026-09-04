@@ -22,6 +22,14 @@ code-review-agent clones a GitHub repository, discovers its Python source files,
 
 Every reviewed file also receives a persisted conversation context, allowing developers to ask targeted follow-up questions without losing the evidence behind the original review.
 
+<div align="center">
+
+
+
+<sub>From repository URL to a severity-ranked engineering signal.</sub>
+
+</div>
+
 [!IMPORTANT]
 Model availability, pricing, context limits, and free-tier policies are controlled by the selected provider and can change. Confirm the current model identifier before running a large review.
 
