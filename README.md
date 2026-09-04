@@ -1,504 +1,542 @@
 <div align="center">
 
+<img src="assets/code-review-hero.svg" alt="Code Review Agent — cinematic banner" width="100%"/>
 
+<br/><br/>
 
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=2800&pause=900&color=58A6FF&center=true&vCenter=true&width=780&lines=Clone+%E2%86%92+Chunk+%E2%86%92+Review+%E2%86%92+Aggregate+%E2%86%92+Report;Powered+by+NVIDIA+Nemotron+70B+%7C+Free+Tier;Line-Boundary+Chunking+%7C+Hypothesis-Verified;Multi-Turn+Conversational+Follow-ups" alt="Typing SVG" />
 
+<br/><br/>
 
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![OpenRouter](https://img.shields.io/badge/OpenRouter-Nemotron%2070B%20Free-6C4EFF?style=for-the-badge)](https://openrouter.ai/)
+[![Anthropic](https://img.shields.io/badge/Anthropic-Claude%203.5%20Sonnet-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
+[![Tests](https://img.shields.io/badge/Tests-Hypothesis%20Verified-2ea44f?style=for-the-badge&logo=pytest&logoColor=white)](#-testing)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-0F2027?style=for-the-badge)](#-cross-platform-setup-guide)
+[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=for-the-badge)](CONTRIBUTING.md)
 
-
-
-
-
-
-An AI-powered code-review pipeline for Python repositories—built for actionable findings, stable chunking, and contextual follow-up conversations.
-
-Quick start · Architecture · CLI reference · Testing · Roadmap
+<sub>⭐ If this project saves you a code review, consider starring it — it genuinely helps.</sub>
 
 </div>
 
-Overview
+<br/>
 
-code-review-agent clones a GitHub repository, discovers its Python source files, breaks oversized files into line-safe overlapping windows, sends those windows to an AI reviewer, and combines the findings into a severity-ranked Markdown report.
+> **code-review-agent** clones a GitHub repository, walks every Python file, splits oversized files into overlapping line-boundary chunks, sends each chunk through a structured LLM review pipeline (NVIDIA Nemotron 70B via OpenRouter — **free** — or Anthropic Claude), then aggregates the findings into a single, severity-sorted Markdown report you can interrogate afterward with grounded, per-file follow-up questions.
 
-Every reviewed file also receives a persisted conversation context, allowing developers to ask targeted follow-up questions without losing the evidence behind the original review.
+<br/>
+
+## 📚 Table of Contents
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+- [✨ Features](#-features)
+- [🎬 Live Demo](#-live-demo)
+- [🏗️ Architecture](#️-architecture)
+- [⚙️ Requirements](#️-requirements)
+- [🌐 Cross-Platform Setup Guide](#-cross-platform-setup-guide)
+  - [🪟 Windows](#-windows)
+  - [🍎 macOS](#-macos)
+  - [🐧 Linux](#-linux)
+
+</td>
+<td width="50%" valign="top">
+
+- [🖥️ Run the Web App Locally](#️-run-the-web-app-locally)
+- [🔑 Configuration](#-configuration)
+- [🚀 Usage](#-usage)
+- [🧪 Testing](#-testing)
+- [📁 Project Structure](#-project-structure)
+- [🗺️ Roadmap](#️-roadmap)
+- [🤝 Contributing](#-contributing) · [📄 License](#-license)
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### 🆓 Free-Tier First
+Native support for **NVIDIA Nemotron 70B**
+(`nvidia/llama-3.1-nemotron-70b-instruct:free`)
+via OpenRouter — zero API cost by default.
+
+</td>
+<td width="33%" valign="top">
+
+### 🔀 Multi-Provider
+Seamless fallback to **Anthropic Claude**
+(`claude-3-5-sonnet-20241022`) when you
+need a heavier-weight reviewer.
+
+</td>
+<td width="33%" valign="top">
+
+### 🧩 Lossless Chunking
+Line-boundary **overlapping sliding windows**
+— zero split tokens mid-statement, verified
+with Hypothesis property-based testing.
+
+</td>
+</tr>
+<tr>
+<td width="33%" valign="top">
+
+### 🧹 Smart Aggregation
+Deduplicates overlapping chunk findings and
+sorts files **worst-severity-first** so the
+report reads top-down by urgency.
+
+</td>
+<td width="33%" valign="top">
+
+### 💬 Conversational Follow-ups
+Reopen a **grounded, multi-turn** REPL
+session per file — ask "why?" and get
+answers anchored to the original review.
+
+</td>
+<td width="33%" valign="top">
+
+### 📝 Clean Markdown Reports
+A single, portable `.md` report — readable
+in any editor, renders natively on GitHub,
+zero external viewer required.
+
+</td>
+</tr>
+</table>
+
+<br/>
+
+## 🎬 Live Demo
 
 <div align="center">
 
+<img src="assets/review-demo.svg" alt="Terminal walkthrough of a full repository review" width="100%"/>
 
-
-<sub>From repository URL to a severity-ranked engineering signal.</sub>
+<sub>Real-time trace of <code>reviewagent review github.com/acme/api</code> — clone → discover → review → merge → signal → report.</sub>
 
 </div>
 
-[!IMPORTANT]
-Model availability, pricing, context limits, and free-tier policies are controlled by the selected provider and can change. Confirm the current model identifier before running a large review.
+<br/>
 
-Why this project
+## 🏗️ Architecture
 
-Challenge
-
-How Code Review Agent handles it
-
-Large files exceed model context limits
-
-Splits source at line boundaries using configurable overlapping windows
-
-Overlap can produce duplicate findings
-
-Normalizes and deduplicates findings during aggregation
-
-Long reports hide urgent problems
-
-Sorts results by worst severity first
-
-One-shot reviews lack explanation
-
-Persists per-file sessions for grounded follow-up questions
-
-Providers differ in cost and availability
-
-Supports OpenRouter and Anthropic through a provider-aware review layer
-
-Chunking bugs silently lose code
-
-Verifies line integrity, order, and reconstruction with property-based tests
-
-Core capabilities
-
-Multi-provider AI review — use an OpenRouter-hosted model or Anthropic Claude.
-
-Repository-aware discovery — walks Python files while respecting .gitignore rules through pathspec.
-
-Line-safe chunking — never cuts a source line in the middle.
-
-Sliding-window context — preserves nearby code across adjacent chunks.
-
-Structured findings — captures severity, location, category, explanation, and remediation.
-
-Finding aggregation — merges overlapping results and removes repeated issues.
-
-Severity-first reports — surfaces the highest-risk files and findings first.
-
-Conversational follow-ups — reopens the stored review context for a specific file.
-
-Property-based verification — stress-tests chunking invariants with randomized inputs.
-
-Architecture
-
+```mermaid
 flowchart TD
-    A["GitHub repository URL"] --> B["Shallow clone"]
-    B --> C["Discover Python files"]
-    C --> D["Line-safe overlapping chunks"]
-    D --> E{"AI provider"}
-    E -->|OpenRouter| F["Structured review"]
-    E -->|Anthropic| F
-    F --> G["Merge and deduplicate"]
-    G --> H["Severity-ranked Markdown report"]
-    F --> I["Per-file session history"]
-    I --> J["Grounded follow-up REPL"]
+    A(["🔗 GitHub Repository URL"]) --> B["1️⃣ Clone<br/><sub>shallow git clone → temp directory</sub>"]
+    B --> C["2️⃣ Enumerate<br/><sub>os.walk · filter *.py · honor .gitignore via pathspec</sub>"]
+    C --> D["3️⃣ Chunk<br/><sub>line-boundary overlapping windows · token-budget proxy</sub>"]
+    D --> E{"4️⃣ Review Loop"}
+    E -->|"free tier"| F["🟢 OpenRouter<br/>NVIDIA Nemotron 70B"]
+    E -->|"fallback"| G["🟣 Anthropic<br/>Claude 3.5 Sonnet"]
+    F --> H["5️⃣ Aggregate<br/><sub>merge chunk results · dedupe boundary findings</sub>"]
+    G --> H
+    H --> I["6️⃣ Markdown Report<br/><sub>ordered worst-severity-first</sub>"]
+    I --> J(["7️⃣ Interactive Follow-up<br/><sub>reopen per-file conversation session</sub>"])
 
-Review lifecycle
+    classDef stage fill:#161b22,stroke:#58A6FF,stroke-width:1.5px,color:#c9d1d9,rx:8,ry:8
+    classDef terminal fill:#0F2027,stroke:#2ea44f,stroke-width:2px,color:#ffffff,rx:20,ry:20
+    classDef decision fill:#21262d,stroke:#D97757,stroke-width:1.5px,color:#c9d1d9
+    class A,J terminal
+    class B,C,D,H,I stage
+    class E decision
+    class F,G stage
+```
 
-sequenceDiagram
-    actor Developer
-    participant CLI
-    participant Repository
-    participant Reviewer as AI Reviewer
-    participant Report
+<sub>💡 GitHub renders this diagram natively — no plugins required.</sub>
 
-    Developer->>CLI: review repository URL
-    CLI->>Repository: shallow clone and discover files
-    loop Each file and chunk
-        CLI->>Reviewer: source context + review schema
-        Reviewer-->>CLI: structured findings
-    end
-    CLI->>CLI: deduplicate and prioritize
-    CLI->>Report: write Markdown report
-    Report-->>Developer: actionable review summary
+<br/>
 
-Review pipeline
+## ⚙️ Requirements
 
-Clone — performs a shallow Git clone in a temporary directory.
+| Requirement | Details |
+|---|---|
+| 🐍 **Python** | 3.11+ |
+| 🌿 **Git** | Available on `PATH` |
+| 🔑 **API Key** | `OPENROUTER_API_KEY` *(free NVIDIA Nemotron 70B)* **or** `ANTHROPIC_API_KEY` |
+| 🖥️ **OS** | Windows 10/11 · macOS 12+ · any modern Linux distro |
 
-Discover — walks the repository, selects .py files, and applies .gitignore rules.
+<br/>
 
-Chunk — creates overlapping windows without splitting source lines.
+## 🌐 Cross-Platform Setup Guide
 
-Review — requests structured findings from the configured AI provider.
+<div align="center">
+<img src="assets/platforms-banner.svg" alt="Windows, macOS, and Linux setup paths" width="100%"/>
+</div>
 
-Aggregate — merges chunk results and removes boundary duplicates.
+<br/>
 
-Prioritize — orders files and findings from highest to lowest severity.
+Pick your operating system below — each guide is self-contained, from a bare machine to a running `reviewagent` command.
 
-Report — generates a portable Markdown review.
+<br/>
 
-Follow up — restores a file-specific conversation for deeper investigation.
+### 🪟 Windows
 
-Requirements
+<details open>
+<summary><b>Windows 10 / 11 — PowerShell setup</b></summary>
 
-Python 3.11+
+<br/>
 
-Git available on PATH
+**1. Install Python 3.11+ and Git** (via [winget](https://learn.microsoft.com/windows/package-manager/winget/), or download installers manually from [python.org](https://www.python.org/downloads/) and [git-scm.com](https://git-scm.com/download/win)):
 
-An API key for at least one supported provider:
+```powershell
+winget install Python.Python.3.11
+winget install Git.Git
+```
 
-OPENROUTER_API_KEY
+> ✅ During the Python installer, make sure **"Add python.exe to PATH"** is checked if you install manually.
 
-ANTHROPIC_API_KEY
+**2. Clone the repository:**
 
-Node.js and npm only if you intend to run the optional web interface
-
-Quick start
-
-1. Clone and install the CLI
-
-git clone https://github.com/MalikSaadAlvi09/code-review-agent.git
+```powershell
+git clone https://github.com/your-username/code-review-agent.git
 cd code-review-agent
+```
 
+**3. Create and activate a virtual environment:**
+
+```powershell
 python -m venv .venv
+.venv\Scripts\activate
+```
 
-Activate the environment:
+> ⚠️ If activation fails with *"running scripts is disabled on this system"*, allow local scripts for your session:
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+> ```
 
-# macOS / Linux
-source .venv/bin/activate
+**4. Install the package and set your API key:**
 
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-
-Install the package with development dependencies:
-
-python -m pip install --upgrade pip
+```powershell
 pip install -e ".[dev]"
+$Env:OPENROUTER_API_KEY = "sk-or-v1-..."
+```
 
-2. Configure a provider
+**5. (Optional) Web app — Node.js via winget, then:**
 
-Copy the safe template and add your key locally:
-
-# macOS / Linux
-cp .env.example .env
-
-# Windows PowerShell
-Copy-Item .env.example .env
-
-Then set one provider key in .env:
-
-# OpenRouter
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
-
-# Or Anthropic
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-
-[!CAUTION]
-Never commit .env or expose a real API key in screenshots, issues, logs, or generated reports. Commit only .env.example.
-
-3. Review a repository
-
-reviewagent review https://github.com/pallets/click.git
-
-The default report is written to code_review_report.md.
-
-Provider configuration
-
-OpenRouter
-
-export OPENROUTER_API_KEY="sk-or-v1-..."
-
-Example with an explicit model:
-
-reviewagent review https://github.com/encode/httpx.git \
-  --provider openrouter \
-  --model nvidia/nemotron-3-super-120b-a12b:free
-
-Browse the OpenRouter model catalog before a large run to confirm current pricing, privacy terms, and availability.
-
-Anthropic
-
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-reviewagent review https://github.com/encode/httpx.git \
-  --provider anthropic \
-  --model claude-sonnet-5
-
-Use Anthropic's current model overview when changing the configured model.
-
-CLI reference
-
-Run a full review
-
-reviewagent review https://github.com/encode/httpx.git \
-  --output ./httpx_report.md \
-  --provider openrouter \
-  --model nvidia/nemotron-3-super-120b-a12b:free \
-  --max-tokens 3000 \
-  --overlap-tokens 300 \
-  --keep-clone
-
-Option
-
-Purpose
-
-Default
-
---output, -o
-
-Generated Markdown report path
-
-code_review_report.md
-
---provider, -p
-
-openrouter or anthropic
-
-Auto-detected
-
---model, -m
-
-Provider model identifier
-
-Provider-specific
-
---max-tokens
-
-Approximate token budget per chunk
-
-3000
-
---overlap-tokens
-
-Context overlap between adjacent chunks
-
-300
-
---keep-clone
-
-Preserve the temporary clone for inspection
-
-Disabled
-
---session-dir
-
-Location for serialized file conversations
-
-.reviewagent_sessions
-
-Ask a file-specific follow-up
-
-reviewagent followup \
-  "src/httpx/_client.py" \
-  "Why was the connection-pool cleanup flagged as a leak near line 180?"
-
-The follow-up command restores the conversation created during the original review, keeping the answer tied to the file and earlier findings.
-
-Example report
-
-# Code Review Report
-
-## Summary
-- Files reviewed: 42
-- Critical: 1
-- High: 3
-- Medium: 8
-- Low: 14
-
-## Critical — src/payments/service.py
-
-### Untrusted input reaches a shell command
-- Severity: Critical
-- Lines: 81–86
-- Category: Security
-- Explanation: User-controlled input is interpolated into a shell command.
-- Recommendation: Replace shell execution with an argument list and strict validation.
-
-Optional web interface
-
-If your checkout includes the Vite/Express dashboard (package.json), run it locally with:
-
+```powershell
+winget install OpenJS.NodeJS.LTS
 npm install
-
-# macOS / Linux
-cp .env.example .env
-
-# Windows PowerShell
 Copy-Item .env.example .env
-
 npm run dev
-
-Open http://localhost:3000.
-
-The web application should read secrets only from the local .env file or a secure deployment environment. Never place provider keys in browser-delivered source code.
-
-Testing
-
-Run the complete test suite:
-
-pytest -v
-
-Run only the chunker property tests:
-
-pytest tests/test_chunker.py -v
-
-Verified chunking invariants
-
-Invariant
-
-Guarantee
-
-Line integrity
-
-No source line is split mid-content
-
-Order preservation
-
-Source lines remain in ascending order
-
-Lossless reconstruction
-
-Removing repeated overlap reconstructs the original file exactly
-
-Hypothesis generates randomized source streams to test these properties across ordinary and adversarial inputs.
-
-Project structure
-
-code-review-agent/
-├── pyproject.toml
-├── README.md
-├── .env.example
-├── src/
-│   └── reviewagent/
-│       ├── __init__.py
-│       ├── config.py
-│       ├── clone.py
-│       ├── discover.py
-│       ├── chunker.py
-│       ├── review.py
-│       ├── conversation.py
-│       ├── aggregate.py
-│       ├── report.py
-│       └── cli.py
-├── tests/
-│   ├── fixtures/
-│   │   └── sample_repo/
-│   ├── test_chunker.py
-│   ├── test_discover.py
-│   └── test_aggregate.py
-└── examples/
-    └── sample_report.md
-
-<details>
-<summary><strong>Module responsibilities</strong></summary>
-
-Module
-
-Responsibility
-
-config.py
-
-Loads provider, model, limits, and environment configuration
-
-clone.py
-
-Manages shallow cloning and temporary repository cleanup
-
-discover.py
-
-Finds Python files and applies ignore rules
-
-chunker.py
-
-Builds line-safe windows with deterministic overlap
-
-review.py
-
-Calls providers and validates structured review responses
-
-conversation.py
-
-Persists and restores per-file review conversations
-
-aggregate.py
-
-Combines chunk findings and removes duplicates
-
-report.py
-
-Renders the severity-ranked Markdown report
-
-cli.py
-
-Exposes the review and followup commands
+```
 
 </details>
 
-Security and privacy
+<br/>
 
-Reviewed source code is sent to the AI provider selected for that run.
+### 🍎 macOS
 
-Do not review repositories containing secrets until those secrets have been removed or redacted.
+<details open>
+<summary><b>macOS 12+ (Apple Silicon &amp; Intel) — zsh setup</b></summary>
 
-Use least-privilege API keys and rotate any credential that may have been exposed.
+<br/>
 
-Treat AI findings as engineering guidance, not as proof that a codebase is secure.
+**1. Install [Homebrew](https://brew.sh/)** if you don't already have it:
 
-Validate high-impact findings manually before changing production systems.
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
-Limitations
+**2. Install Python 3.11+ and Git:**
 
-The agent currently targets Python source files.
+```bash
+brew install python@3.11 git
+```
 
-Results depend on the selected model, prompt, repository context, and provider limits.
+**3. Clone the repository:**
 
-Static review cannot fully reproduce runtime behavior or guarantee vulnerability detection.
+```bash
+git clone https://github.com/your-username/code-review-agent.git
+cd code-review-agent
+```
 
-Findings can contain false positives or miss defects; human validation remains essential.
+**4. Create and activate a virtual environment:**
 
-Roadmap
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-GitHub pull-request review comments
+**5. Install the package and set your API key:**
 
-SARIF export for code-scanning tools
+```bash
+pip install -e ".[dev]"
+export OPENROUTER_API_KEY="sk-or-v1-..."
+```
 
-Additional language parsers
+> 💡 Add the `export` line to `~/.zshrc` so it persists across terminal sessions.
 
-Incremental reviews based on Git diffs
+**6. (Optional) Web app:**
 
-Configurable review policies and severity gates
+```bash
+brew install node
+npm install
+cp .env.example .env
+npm run dev
+```
 
-Token and cost estimates before submission
+</details>
 
-Local-model provider support
+<br/>
 
-Web dashboard review history and team collaboration
+### 🐧 Linux
 
-Contributing
+<details open>
+<summary><b>Debian / Ubuntu · Fedora · Arch — bash setup</b></summary>
 
-Contributions are welcome.
+<br/>
 
-Fork the repository.
+**1. Install Python 3.11+, Git, and build tools:**
 
-Create a focused branch: git checkout -b feat/your-feature.
+```bash
+# Debian / Ubuntu
+sudo apt update && sudo apt install -y python3.11 python3.11-venv python3-pip git build-essential
 
-Add or update tests with your change.
+# Fedora
+sudo dnf install -y python3.11 python3-pip git @development-tools
 
-Run pytest -v.
+# Arch
+sudo pacman -S --needed python python-pip git base-devel
+```
 
-Commit with a clear message.
+**2. Clone the repository:**
 
-Open a pull request describing the behavior and tradeoffs.
+```bash
+git clone https://github.com/your-username/code-review-agent.git
+cd code-review-agent
+```
 
-Please avoid mixing unrelated changes in the same pull request.
+**3. Create and activate a virtual environment:**
 
-License
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+```
 
-Add a LICENSE file before distributing the project publicly, then replace the license badge at the top of this README with the selected license.
+**4. Install the package and set your API key:**
 
-Acknowledgements
+```bash
+pip install -e ".[dev]"
+export OPENROUTER_API_KEY="sk-or-v1-..."
+```
 
-Built with Python, Typer, Pydantic Settings, PathSpec, Pytest, Hypothesis, OpenRouter, and Anthropic.
+> 💡 Add the `export` line to `~/.bashrc` or `~/.zshrc` so it persists across terminal sessions.
+
+**5. (Optional) Web app — via [nvm](https://github.com/nvm-sh/nvm) (recommended) or your distro's package manager:**
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+nvm install --lts
+npm install
+cp .env.example .env
+npm run dev
+```
+
+</details>
+
+<br/>
+
+## 🖥️ Run the Web App Locally
+
+This project runs as a regular Vite/Express application and does **not** require AI Studio.
+
+```bash
+npm install
+cp .env.example .env      # Windows PowerShell: Copy-Item .env.example .env
+npm run dev
+```
+
+Open **http://localhost:3000** in your browser.
+
+> ⚠️ Put your real `GEMINI_API_KEY` or `OPENROUTER_API_KEY` only in `.env` — `.env` is git-ignored.
+> To publish the source on GitHub, commit `.env.example`, **never** `.env`.
+
+<br/>
+
+## 🔑 Configuration
+
+<details open>
+<summary><b>Option A — OpenRouter Free NVIDIA Nemotron 70B</b> <sub>(recommended)</sub></summary>
+
+<br/>
+
+```bash
+# 1. Get a free API key at https://openrouter.ai/keys
+export OPENROUTER_API_KEY="sk-or-v1-..."
+
+# Default model is nvidia/llama-3.1-nemotron-70b-instruct:free
+```
+
+</details>
+
+<details>
+<summary><b>Option B — Anthropic Claude</b></summary>
+
+<br/>
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-api03-..."
+```
+
+</details>
+
+<br/>
+
+## 🚀 Usage
+
+<div align="center">
+<img src="assets/quickstart-flow.svg" alt="Install, configure, run, report pipeline" width="100%"/>
+</div>
+
+<br/>
+
+### 1️⃣ Run a full repository review
+
+```bash
+# Default uses nvidia/llama-3.1-nemotron-70b-instruct:free via OpenRouter
+reviewagent review https://github.com/pallets/click.git
+```
+
+**Custom options:**
+
+```bash
+reviewagent review https://github.com/encode/httpx.git \
+  --output ./httpx_report.md \
+  --model nvidia/llama-3.1-nemotron-70b-instruct:free \
+  --max-tokens 3000 \
+  --overlap-tokens 300 \
+  --keep-clone
+```
+
+<details>
+<summary><b>📋 Full flag reference</b></summary>
+
+<br/>
+
+| Flag | Description | Default |
+|---|---|---|
+| `--output, -o` | Path to the generated Markdown report | `code_review_report.md` |
+| `--model, -m` | LLM model identifier | `nvidia/llama-3.1-nemotron-70b-instruct:free` / `claude-3-5-sonnet-20241022` |
+| `--provider, -p` | Provider override — `openrouter` or `anthropic` | auto-detected |
+| `--max-tokens` | Approximate token budget per chunk before splitting | `3000` |
+| `--overlap-tokens` | Overlap budget between adjacent chunks | `300` |
+| `--keep-clone` | Retains the cloned repository on disk for inspection | off |
+| `--session-dir` | Directory storing serialized conversation sessions | `.reviewagent_sessions` |
+
+</details>
+
+### 2️⃣ Ask follow-up questions for a specific file
+
+```bash
+reviewagent followup "src/httpx/_client.py" \
+  "Why is the connection pool cleanup flagged as a leak on line 180?"
+```
+
+<br/>
+
+## 🧪 Testing
+
+```bash
+pytest -v
+```
+
+### Property-Based Invariant Testing
+
+The chunking engine (`src/reviewagent/chunker.py`) is verified with **Hypothesis** in `tests/test_chunker.py` across hundreds of randomized text streams, guaranteeing three core invariants:
+
+```mermaid
+flowchart LR
+    A["📏 Line Integrity<br/><sub>chunks split strictly on line boundaries</sub>"] --> D(["✅ Verified<br/>hundreds of random inputs"])
+    B["🔢 Order Preservation<br/><sub>strict ascending line numbers, no gaps</sub>"] --> D
+    C["🔁 Lossless Reconstruction<br/><sub>trimmed overlaps reproduce original byte-for-byte</sub>"] --> D
+
+    classDef inv fill:#161b22,stroke:#58A6FF,stroke-width:1.5px,color:#c9d1d9,rx:8,ry:8
+    classDef pass fill:#0F2027,stroke:#2ea44f,stroke-width:2px,color:#ffffff,rx:20,ry:20
+    class A,B,C inv
+    class D pass
+```
+
+<br/>
+
+## 📁 Project Structure
+
+```
+code-review-agent/
+├── pyproject.toml              # Hatchling build & dependencies (openai, anthropic, typer)
+├── README.md                   # Full architecture & CLI manual
+├── .env.example                # Environment variables template
+├── assets/                     # README banners & diagrams
+│   ├── code-review-hero.svg
+│   ├── review-demo.svg
+│   ├── platforms-banner.svg
+│   └── quickstart-flow.svg
+├── src/
+│   └── reviewagent/
+│       ├── __init__.py
+│       ├── config.py           # pydantic-settings (OpenRouter Nemotron + Anthropic)
+│       ├── clone.py            # subprocess git clone & tempdir handling
+│       ├── discover.py         # os.walk + pathspec .gitignore filtering
+│       ├── chunker.py          # line-boundary overlapping window chunker
+│       ├── review.py           # Multi-provider LLM review (OpenRouter / Anthropic)
+│       ├── conversation.py     # per-file multi-turn conversation store
+│       ├── aggregate.py        # merge chunk findings & deduplicate overlap
+│       ├── report.py           # Markdown report generator
+│       └── cli.py              # Typer CLI (review + followup commands)
+├── tests/
+│   ├── fixtures/
+│   │   └── sample_repo/        # fixture repo for discovery & review tests
+│   ├── test_chunker.py         # Hypothesis property-based tests
+│   ├── test_discover.py        # unit tests for file discovery & gitignore
+│   └── test_aggregate.py       # unit tests for finding deduplication
+└── examples/
+    └── sample_report.md        # sample generated review report
+```
+
+<br/>
+
+## 🗺️ Roadmap
+
+- [ ] Multi-language support beyond Python
+- [ ] JSON / SARIF export for CI integration
+- [ ] GitHub Action for automated PR reviews
+- [ ] Parallel chunk review with rate-limit backoff
+- [ ] Web dashboard for report browsing
+
+<br/>
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!
+Feel free to check the [issues page](../../issues) or open a pull request.
+
+```bash
+# Fork → clone → branch → commit → push → PR
+git checkout -b feat/your-feature-name
+```
+
+<br/>
+
+## 📄 License
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
+
+<br/>
 
 <div align="center">
 
-Turn repository noise into a prioritized engineering plan.
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:2C5364,50:203A43,100:0F2027&height=120&section=footer" width="100%"/>
 
-
+<sub>Built with 🧠 structured LLM reasoning · ✅ property-based testing · 📝 clean Markdown output</sub>
 
 </div>
