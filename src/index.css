@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Fredoka', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Baloo 2', 'Fredoka', cursive, sans-serif;
+  --font-display: 'Lilita One', 'Baloo 2', cursive, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    letter-spacing: 0.01em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: 0.015em;
+  }
+}
+
+.font-fredoka {
+  font-family: 'Fredoka', sans-serif;
+}
+
+.font-baloo {
+  font-family: 'Baloo 2', cursive, sans-serif;
+}
+
+.font-lilita {
+  font-family: 'Lilita One', cursive, sans-serif;
+  letter-spacing: 0.03em;
+}

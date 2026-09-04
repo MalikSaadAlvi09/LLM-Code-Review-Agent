@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User profile document
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // User's saved reviews
+      match /reviews/{reviewId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's chat threads
+      match /chats/{chatId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's generated diagrams and images
+      match /diagrams/{diagramId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's saved code snippets
+      match /snippets/{snippetId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's configuration and model settings (OpenRouter, LLM preferences)
+      match /settings/{settingId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Public demo reviews readable by everyone, writable by owners
+    match /public_reviews/{reviewId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+  }
+}

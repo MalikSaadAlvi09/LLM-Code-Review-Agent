@@ -1,0 +1,6 @@
+{
+  "name": "LLM Code Review Agent",
+  "description": "Autonomous CLI and interactive workspace that clones repositories, chunks Python files safely on line boundaries, performs multi-turn structured code reviews via LLM, and compiles severity-ordered Markdown reports with follow-up threads.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

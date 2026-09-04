@@ -1,0 +1,5 @@
+# Gitignore for fixture repo
+__pycache__/
+*.pyc
+ignored_subdir/
+temp_*.py
