@@ -3,6 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
+import { randomUUID } from 'crypto';
 
 dotenv.config();
 
@@ -18,6 +19,32 @@ function getAI(): GoogleGenAI {
     aiClient = new GoogleGenAI({ apiKey: apiKey || 'dummy-key' });
   }
   return aiClient;
+}
+
+function parseStructuredReview(value: unknown): any {
+  if (typeof value === 'object' && value !== null) return value;
+  if (typeof value !== 'string' || !value.trim()) throw new Error('The model returned an empty review.');
+  const cleaned = value.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  const candidate = start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    throw new Error('The model returned an invalid structured review.');
+  }
+}
+
+function normalizeReview(review: any) {
+  if (!review || typeof review !== 'object' || !Array.isArray(review.findings)) {
+    throw new Error('The model response did not contain valid review findings.');
+  }
+  return {
+    summary: typeof review.summary === 'string' ? review.summary : 'Review completed.',
+    findings: review.findings,
+    qualityScore: typeof review.qualityScore === 'number' ? review.qualityScore : 0,
+    verdict: review.verdict || 'Needs Improvement',
+  };
 }
 
 export async function createApp() {
@@ -173,21 +200,26 @@ Respond strictly in valid JSON with this structure:
       
       let parsedJson = null;
       if (task === 'review') {
-        try {
-          const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-          parsedJson = JSON.parse(cleaned);
-        } catch {
-          parsedJson = null;
-        }
+        parsedJson = normalizeReview(parseStructuredReview(responseText));
       }
 
       return res.json({
+        success: true,
+        sessionId: randomUUID(),
+        review: parsedJson,
         rawText: responseText,
         structured: parsedJson,
         task,
         modelUsed: model
       });
     } catch (error: any) {
+      if (task === 'review') {
+        return res.status(502).json({
+          success: false,
+          error: 'The Gemini review could not be completed.',
+          details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+        });
+      }
       console.warn('Analyze API call note, using static code analyzer fallback:', error.message);
 
       // Deterministic AST & static analysis rules
@@ -802,6 +834,7 @@ ${userAudioTranscript}`;
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
         return res.status(response.status).json({
+          success: false,
           error: errJson.error?.message || `OpenRouter returned HTTP ${response.status}`
         });
       }
@@ -906,24 +939,13 @@ You MUST respond strictly in valid JSON without extra conversational preamble. F
 
       let parsedJson = null;
       if (task === 'review') {
-        try {
-          const cleaned = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-          parsedJson = JSON.parse(cleaned);
-        } catch {
-          // Attempt finding JSON substring
-          const startIdx = responseText.indexOf('{');
-          const endIdx = responseText.lastIndexOf('}');
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            try {
-              parsedJson = JSON.parse(responseText.substring(startIdx, endIdx + 1));
-            } catch {
-              parsedJson = null;
-            }
-          }
-        }
+        parsedJson = normalizeReview(parseStructuredReview(responseText));
       }
 
       res.json({
+        success: true,
+        sessionId: randomUUID(),
+        review: parsedJson,
         rawText: responseText,
         structured: parsedJson,
         task,
@@ -933,7 +955,52 @@ You MUST respond strictly in valid JSON without extra conversational preamble. F
       });
     } catch (error: any) {
       console.error('OpenRouter Analyze API Error:', error);
-      res.status(500).json({ error: error.message || 'OpenRouter analysis failed' });
+      res.status(502).json({
+        success: false,
+        error: 'The OpenRouter review could not be completed.',
+        details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+      });
+    }
+  });
+
+  app.post('/api/review/followup', async (req, res) => {
+    const { sessionId, filename, sourceCode, structuredReview, conversationHistory = [], question, model } = req.body;
+    if (!sessionId || !filename || !sourceCode || !structuredReview || !question?.trim() || !model) {
+      return res.status(400).json({ success: false, error: 'A valid review session, code, model, and question are required.' });
+    }
+
+    const context = `Reviewed file: ${filename}\n\nSource code:\n\`\`\`python\n${sourceCode}\n\`\`\`\n\nStructured review:\n${JSON.stringify(structuredReview)}`;
+    try {
+      const history = conversationHistory.map((message: any) => ({ role: message.role, content: message.content }));
+      let answer = '';
+      if (model.includes('/') || model.includes('nemotron') || model.includes('llama')) {
+        const key = process.env.OPENROUTER_API_KEY;
+        if (!key) throw new Error('OPENROUTER_API_KEY is not configured on the server.');
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000', 'X-Title': 'LLM Code Review Agent' },
+          body: JSON.stringify({ model, messages: [{ role: 'system', content: `Answer only questions about this review.\n${context}` }, ...history, { role: 'user', content: question.trim() }], temperature: 0.2 }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error?.message || `OpenRouter returned HTTP ${response.status}`);
+        answer = payload.choices?.[0]?.message?.content || '';
+      } else {
+        if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'dummy-key') throw new Error('GEMINI_API_KEY is not configured on the server.');
+        const response = await getAI().models.generateContent({
+          model,
+          contents: [
+            ...history.map((message: any) => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] })),
+            { role: 'user', parts: [{ text: `${context}\n\nQuestion: ${question.trim()}` }] },
+          ],
+          config: { systemInstruction: 'Answer only questions about the reviewed Python code and its findings.', temperature: 0.2 },
+        });
+        answer = response.text || '';
+      }
+      if (!answer.trim()) throw new Error('The model returned an empty follow-up answer.');
+      return res.json({ success: true, sessionId, answer });
+    } catch (error: any) {
+      console.error('Follow-up API error:', error.message);
+      return res.status(502).json({ success: false, error: 'The follow-up answer could not be completed.', details: process.env.NODE_ENV === 'production' ? undefined : error.message });
     }
   });
 

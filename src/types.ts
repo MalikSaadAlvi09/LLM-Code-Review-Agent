@@ -13,6 +13,21 @@ export interface ReviewResult {
   verdict: 'Needs Improvement' | 'Approved' | 'Critical Issues';
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ReviewSession {
+  id: string;
+  filename: string;
+  sourceCode: string;
+  model: string;
+  review: ReviewResult;
+  messages: ChatMessage[];
+  createdAt: string;
+}
+
 export interface OpenRouterModelInfo {
   id: string;
   name: string;

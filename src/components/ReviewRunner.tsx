@@ -22,6 +22,7 @@ import {
   Lock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { ChatMessage, ReviewResult, ReviewSession } from '../types';
 
 interface Finding {
   line: number;
@@ -30,11 +31,6 @@ interface Finding {
   description: string;
   suggested_fix?: string;
   suggestion?: string;
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
 }
 
 const SAMPLE_CODES = [
@@ -150,6 +146,9 @@ export function ReviewRunner() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
   const [cloudStatus, setCloudStatus] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<'idle' | 'reviewing' | 'ready' | 'asking' | 'error'>('idle');
+  const [reviewSession, setReviewSession] = useState<ReviewSession | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   // Gemini Intelligence Extra Tasks
   const [activeIntelTab, setActiveIntelTab] = useState<'review' | 'refactor' | 'tests' | 'security'>('review');
@@ -179,131 +178,79 @@ export function ReviewRunner() {
       setFindings([]);
       setSummary(null);
       setMessages([]);
+      setReviewSession(null);
+      setSessionStatus('idle');
+      setReviewError(null);
       setIntelResultText(null);
     }
   };
 
   const handleRunReview = async () => {
+    if (isReviewing) return;
+    if (!code.trim()) {
+      setReviewError('Add Python source code before starting a review.');
+      setSessionStatus('error');
+      return;
+    }
+    if (!AVAILABLE_MODELS.some(model => model.id === activeModel)) {
+      setReviewError('Select a supported review model before starting.');
+      setSessionStatus('error');
+      return;
+    }
+
     setIsReviewing(true);
+    setSessionStatus('reviewing');
+    setReviewError(null);
     setFindings([]);
     setSummary(null);
     setIntelResultText(null);
 
     try {
-      let data: any = null;
-
-      if (isOpenRouterModel) {
-        // Run review via OpenRouter
-        const effectiveModel = openRouterConfig.customModelName || openRouterConfig.selectedModel || 'nvidia/llama-3.1-nemotron-70b-instruct';
-        const res = await fetch('/api/openrouter/analyze', {
+      const endpoint = isOpenRouterModel ? '/api/openrouter/analyze' : '/api/gemini/analyze';
+      const effectiveModel = isOpenRouterModel
+        ? (openRouterConfig.customModelName || openRouterConfig.selectedModel || activeModel)
+        : activeModel;
+      const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            apiKey: openRouterConfig.apiKey,
             code,
             filePath: activeSample,
             task: 'review',
             model: effectiveModel,
-            temperature: openRouterConfig.temperature ?? 0.2
+            temperature: openRouterConfig.temperature ?? 0.2,
           })
         });
-        data = await res.json();
-      } else {
-        // Call Gemini Analyze Endpoint
-        const res = await fetch('/api/gemini/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code,
-            filePath: activeSample,
-            task: 'review',
-            model: activeModel.startsWith('gemini') ? activeModel : 'gemini-3.1-pro-preview',
-          })
-        });
-        data = await res.json();
-      }
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(payload?.error || `Review request failed (HTTP ${res.status}).`);
+      const review = payload?.review || payload?.structured;
+      if (!review || !Array.isArray(review.findings)) throw new Error('The review response was missing structured findings.');
 
-      if (data && data.structured && data.structured.findings) {
-        setFindings(data.structured.findings);
-        const summ = `[${selectedModelObj.name}] ${data.structured.summary || `Identified ${data.structured.findings.length} findings.`} (Quality Score: ${data.structured.qualityScore || 80}/100)`;
-        setSummary(summ);
-        setMessages([
-          {
-            role: 'assistant',
-            content: `Review complete for ${activeSample} via **${selectedModelObj.name}**:\n${summ}\n\nAsk me anything about these findings, line-by-line fixes, or architectural refactorings!`
-          }
-        ]);
-      } else {
-        // Fallback simulated detection matching sample AST
-        const detectedFindings: Finding[] = [];
-        if (code.includes('["stripe_id"]')) {
-          detectedFindings.push({
-            line: 7,
-            severity: 'bug',
-            title: 'Unchecked dict key access on potential NoneType',
-            description: '`customer.get("metadata")` can return `None`, raising a `TypeError: "NoneType" object is not subscriptable` at runtime.',
-            suggestion: 'stripe_id = (customer.get("metadata") or {}).get("stripe_id")'
-          });
-        }
-        if (code.includes('PoolManager()')) {
-          detectedFindings.push({
-            line: 16,
-            severity: 'bug',
-            title: 'Unrecycled connection pool instantiated per-request',
-            description: 'Instantiating `urllib3.PoolManager()` inside the function call exhausts sockets under high throughput.',
-            suggestion: 'Move `http = urllib3.PoolManager()` to a module-level constant or client dependency.'
-          });
-        }
-        if (code.includes('return None')) {
-          detectedFindings.push({
-            line: 23,
-            severity: 'logic',
-            title: 'Silent exception suppression returning None',
-            description: 'Non-200 HTTP responses fail silently without error logging or domain exception raising.',
-            suggestion: 'raise PaymentProcessingError(f"Stripe API error: {response.status}")'
-          });
-        }
-        if (code.includes('0.0')) {
-          detectedFindings.push({
-            line: 4,
-            severity: 'logic',
-            title: 'Floating point rounding drift in financial ledger calculation',
-            description: 'Using `float` for currency introduces IEEE-754 precision loss.',
-            suggestion: 'total_amount = Decimal("0.00")'
-          });
-        }
-        if (code.includes('== True')) {
-          detectedFindings.push({
-            line: 7,
-            severity: 'style',
-            title: 'Comparison to boolean literal with `==` instead of `is` or truthy check',
-            description: 'PEP 8 recommends `if tx["is_valid"]:` rather than `if tx["is_valid"] == True:`.',
-            suggestion: 'if tx["is_valid"]:'
-          });
-        }
-        if (code.includes('create_subprocess_shell')) {
-          detectedFindings.push({
-            line: 7,
-            severity: 'bug',
-            title: 'Command Injection vulnerability in subprocess shell',
-            description: 'Using f-strings with `create_subprocess_shell` enables arbitrary command injection.',
-            suggestion: 'Use `create_subprocess_exec("curl", "-s", url)` instead of shell=True.'
-          });
-        }
+      const session: ReviewSession = {
+        id: payload.sessionId || crypto.randomUUID(),
+        filename: activeSample,
+        sourceCode: code,
+        model: effectiveModel,
+        review: review as ReviewResult,
+        messages: [{ role: 'assistant', content: `Review complete for ${activeSample} via **${selectedModelObj.name}**.` }],
+        createdAt: new Date().toISOString(),
+      };
+      setReviewSession(session);
+      setFindings(review.findings);
+      const summ = `[${selectedModelObj.name}] ${review.summary || `Identified ${review.findings.length} findings.`} (Quality Score: ${review.qualityScore ?? 0}/100)`;
+      setSummary(summ);
+      setMessages(session.messages);
+      setSessionStatus('ready');
 
-        const summ = `[${selectedModelObj.name}] Identified ${detectedFindings.length} issue(s).`;
-        setFindings(detectedFindings);
-        setSummary(summ);
-        setMessages([
-          {
-            role: 'assistant',
-            content: `Initial Review complete for ${activeSample} via **${selectedModelObj.name}**:\n${summ}\n\nAsk me anything about these findings or ask for an automated refactor!`
-          }
-        ]);
+      if (user) {
+        const savedId = await saveReviewToCloud(`Review: ${activeSample}`, activeSample, review.findings, code, selectedModelObj.name);
+        if (!savedId) setCloudStatus('Review completed, but cloud synchronization failed.');
       }
     } catch (err: any) {
-      console.error(err);
-      setSummary(`Review completed with standard checks.`);
+      console.error('Structured review failed:', err);
+      setReviewSession(null);
+      setReviewError(err.message || 'The review could not be completed.');
+      setSessionStatus('error');
     } finally {
       setIsReviewing(false);
     }
@@ -355,57 +302,41 @@ export function ReviewRunner() {
 
   const handleSendQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim() || isAsking) return;
+    if (!question.trim() || isAsking || sessionStatus !== 'ready' || !reviewSession) return;
 
     const userQ = question.trim();
-    setQuestion('');
     const newMessages: ChatMessage[] = [...messages, { role: 'user', content: userQ }];
     setMessages(newMessages);
     setIsAsking(true);
+    setSessionStatus('asking');
 
     try {
-      let data: any = null;
-      if (isOpenRouterModel) {
-        const effectiveModel = openRouterConfig.customModelName || openRouterConfig.selectedModel || 'nvidia/llama-3.1-nemotron-70b-instruct';
-        const res = await fetch('/api/openrouter/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey: openRouterConfig.apiKey,
-            messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-            role: 'Senior Python Architect',
-            model: effectiveModel,
-            systemInstruction: `You are answering questions specifically about the Python review findings for file '${activeSample}':\n\`\`\`python\n${code}\n\`\`\``
-          })
-        });
-        data = await res.json();
-      } else {
-        const res = await fetch('/api/gemini/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-            role: 'Senior Python Architect',
-            model: activeModel.startsWith('gemini') ? activeModel : 'gemini-3.5-flash',
-            systemInstruction: `You are answering questions specifically about the Python review findings for file '${activeSample}':\n\`\`\`python\n${code}\n\`\`\``
-          })
-        });
-        data = await res.json();
-      }
-
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: data.reply || 'No response returned.'
-        }
-      ]);
+      const res = await fetch('/api/review/followup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: reviewSession.id,
+          filename: reviewSession.filename,
+          sourceCode: reviewSession.sourceCode,
+          structuredReview: reviewSession.review,
+          conversationHistory: messages,
+          question: userQ,
+          model: reviewSession.model,
+        }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.success || !payload.answer) throw new Error(payload?.error || `Follow-up request failed (HTTP ${res.status}).`);
+      setQuestion('');
+      setMessages(prev => [...prev, { role: 'assistant', content: payload.answer }]);
+      setReviewSession(prev => prev ? { ...prev, messages: [...prev.messages, { role: 'user', content: userQ }, { role: 'assistant', content: payload.answer }] } : prev);
+      setSessionStatus('ready');
     } catch (err: any) {
+      setSessionStatus('ready');
       setMessages(prev => [
         ...prev,
         {
           role: 'assistant',
-          content: `Follow-up note: ${err.message}`
+          content: `Follow-up failed: ${err.message}`
         }
       ]);
     } finally {
@@ -564,7 +495,14 @@ export function ReviewRunner() {
             <div className="p-4">
               <textarea
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => {
+                  setCode(e.target.value);
+                  if (reviewSession) {
+                    setReviewSession(null);
+                    setMessages([]);
+                    setSessionStatus('idle');
+                  }
+                }}
                 rows={13}
                 spellCheck={false}
                 className="w-full font-mono text-xs text-neutral-800 bg-neutral-50/50 p-3.5 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-neutral-900 leading-relaxed resize-none"
@@ -582,7 +520,7 @@ export function ReviewRunner() {
 
             <button
               onClick={handleRunReview}
-              disabled={isReviewing}
+              disabled={isReviewing || !code.trim()}
               className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 text-white text-xs font-semibold transition flex items-center gap-2 shadow-xs cursor-pointer"
             >
               {isReviewing ? (
@@ -598,6 +536,12 @@ export function ReviewRunner() {
               )}
             </button>
           </div>
+          {reviewError && (
+            <div className="p-3.5 border-t border-rose-200 bg-rose-50 text-xs text-rose-700" role="alert">
+              <div>{reviewError}</div>
+              <button type="button" onClick={handleRunReview} className="mt-2 font-semibold underline">Retry Review</button>
+            </div>
+          )}
         </div>
 
         {/* Findings Panel (5 cols) */}
@@ -704,21 +648,23 @@ export function ReviewRunner() {
 
         {/* Question Input */}
         <form onSubmit={handleSendQuestion} className="flex items-center gap-2 pt-2">
-          <input
-            type="text"
+          <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            disabled={isAsking || findings.length === 0}
-            placeholder={
-              findings.length === 0
-                ? 'Execute a review first to ask follow-up questions...'
-                : `Ask ${selectedModelObj.name} why line 7 was flagged, or how to write a test...`
-            }
-            className="flex-1 px-4 py-2.5 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-neutral-900 text-xs text-neutral-900 bg-neutral-50/50 disabled:opacity-50"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
+            disabled={isAsking || sessionStatus !== 'ready' || !reviewSession}
+            placeholder={reviewSession ? 'Ask a question about this review...' : 'Execute a review first to ask follow-up questions...'}
+            rows={2}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-neutral-900 text-xs text-neutral-900 bg-neutral-50/50 disabled:opacity-50 resize-none"
           />
           <button
             type="submit"
-            disabled={isAsking || !question.trim()}
+            disabled={isAsking || sessionStatus !== 'ready' || !reviewSession || !question.trim()}
             className="px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs shrink-0"
           >
             <Send className="w-3.5 h-3.5" />
