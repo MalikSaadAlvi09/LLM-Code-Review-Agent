@@ -23,7 +23,8 @@ import {
   Settings as SettingsIcon,
   Key,
   Palette,
-  ChevronDown
+  ChevronDown,
+  Github
 } from 'lucide-react';
 import { CodeExplorer } from './components/CodeExplorer';
 import { ReviewRunner } from './components/ReviewRunner';
@@ -54,6 +55,15 @@ export default function App() {
       await signInWithGoogle();
     } catch (error: any) {
       setAuthError(error.message || 'Google sign-in failed.');
+    }
+  };
+
+  const handleGitHubSignIn = async () => {
+    setAuthError(null);
+    try {
+      await signInWithGitHub();
+    } catch (error: any) {
+      setAuthError(error.message || 'GitHub sign-in failed.');
     }
   };
 
@@ -173,14 +183,24 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <button
-                id="google-signin-btn"
-                onClick={handleGoogleSignIn}
-                className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-baloo font-bold flex items-center gap-1.5 shadow-xs transition"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Google Sign-In</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  id="google-signin-btn"
+                  onClick={handleGoogleSignIn}
+                  className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-baloo font-bold flex items-center gap-1.5 shadow-xs transition"
+                >
+                  <LogIn className="w-4 h-4 text-blue-400" />
+                  <span>Google Sign-In</span>
+                </button>
+                <button
+                  id="github-signin-btn"
+                  onClick={handleGitHubSignIn}
+                  className="px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-baloo font-bold flex items-center gap-1.5 shadow-xs transition"
+                >
+                  <Github className="w-4 h-4 text-amber-300" />
+                  <span>GitHub Sign-In</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
