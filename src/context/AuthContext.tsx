@@ -1,16 +1,23 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { 
   auth, 
   googleProvider, 
-  githubProvider,
+  createGitHubProvider,
   signInWithPopup, 
   signInWithRedirect,
+  linkWithPopup,
+  linkWithRedirect,
+  getRedirectResult,
+  getAdditionalUserInfo,
+  unlink,
   fbSignOut, 
   onAuthStateChanged, 
+  functions,
+  httpsCallable,
   db, 
   doc, 
   setDoc, 
-  getDoc,
+  getDoc, 
   collection, 
   addDoc, 
   getDocs, 
@@ -20,13 +27,26 @@ import {
   User 
 } from '../lib/firebase';
 import { OpenRouterConfig } from '../types';
+import { UserCredential } from 'firebase/auth';
+
+export interface GitHubConnectionState {
+  connected: boolean;
+  username: string | null;
+  avatarUrl: string | null;
+  status: 'idle' | 'connecting' | 'redirecting' | 'connected' | 'error';
+  error: string | null;
+}
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInToAppWithGoogle: () => Promise<void>;
   signInWithGitHub: () => Promise<void>;
+  connectGitHubAccount: () => Promise<void>;
+  disconnectGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
+  githubConnection: GitHubConnectionState;
   saveReviewToCloud: (title: string, sampleName: string, findings: any[], code: string, model: string) => Promise<string | null>;
   saveChatToCloud: (title: string, role: string, model: string, messages: any[]) => Promise<string | null>;
   saveDiagramToCloud: (prompt: string, model: string, resolution: string, imageUrl: string) => Promise<string | null>;
@@ -54,6 +74,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [githubConnection, setGithubConnection] = useState<GitHubConnectionState>({
+    connected: false,
+    username: null,
+    avatarUrl: null,
+    status: 'idle',
+    error: null,
+  });
+
+  const redirectProcessedRef = useRef(false);
+
   const [openRouterConfig, setOpenRouterConfig] = useState<OpenRouterConfig>(() => {
     try {
       const saved = localStorage.getItem('openrouter_config');
@@ -65,6 +95,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return DEFAULT_OPENROUTER_CONFIG;
   });
+
+  const completeGitHubConnection = async (result: UserCredential) => {
+    const credential = (result as any)?.credential || undefined;
+    const accessToken = credential?.accessToken;
+    const profile = getAdditionalUserInfo(result)?.profile as any;
+    const username = typeof profile?.login === 'string'
+      ? profile.login
+      : result.user.displayName || 'GitHub User';
+    const avatarUrl = typeof profile?.avatar_url === 'string'
+      ? profile.avatar_url
+      : result.user.photoURL || undefined;
+
+    if (accessToken) {
+      try {
+        const registerFn = httpsCallable(functions, 'registerGitHubConnection');
+        await registerFn({ accessToken });
+      } catch (err: any) {
+        console.warn('registerGitHubConnection call note:', err?.message);
+      }
+    }
+
+    setGithubConnection({
+      connected: true,
+      username,
+      avatarUrl: avatarUrl || null,
+      status: 'connected',
+      error: null,
+    });
+  };
+
+  const handleAuthenticationRedirect = async () => {
+    try {
+      const result = await getRedirectResult(auth);
+      if (!result) return;
+
+      const pendingConnection = sessionStorage.getItem('pendingGitHubConnection');
+      if (result.providerId === 'github.com' || (result.user && pendingConnection)) {
+        await completeGitHubConnection(result);
+        if (pendingConnection) {
+          try {
+            const parsed = JSON.parse(pendingConnection);
+            sessionStorage.removeItem('pendingGitHubConnection');
+            if (parsed?.returnPath) {
+              window.history.replaceState({}, '', parsed.returnPath);
+            }
+          } catch {
+            sessionStorage.removeItem('pendingGitHubConnection');
+          }
+        }
+      }
+    } catch (error: any) {
+      sessionStorage.removeItem('pendingGitHubConnection');
+      let errorMsg = error?.message || 'Redirect authentication failed.';
+      if (error?.code === 'auth/unauthorized-domain') {
+        const hostname = window.location.hostname;
+        errorMsg = `This deployment domain (${hostname}) is not authorized in Firebase.`;
+      }
+      setGithubConnection(prev => ({
+        ...prev,
+        status: 'error',
+        error: errorMsg,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (!redirectProcessedRef.current) {
+      redirectProcessedRef.current = true;
+      void handleAuthenticationRedirect();
+    }
+  }, []);
 
   const syncSettingsFromFirestore = async (uid: string): Promise<OpenRouterConfig | null> => {
     try {
@@ -92,6 +193,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(currentUser);
       setLoading(false);
       if (currentUser) {
+        const ghProviderData = currentUser.providerData.find(p => p.providerId === 'github.com');
+        if (ghProviderData) {
+          setGithubConnection(prev => ({
+            ...prev,
+            connected: true,
+            username: ghProviderData.displayName || ghProviderData.email || 'GitHub User',
+            avatarUrl: ghProviderData.photoURL || null,
+            status: 'connected',
+          }));
+        }
+
         // Sync user profile to Firestore
         const userRef = doc(db, 'users', currentUser.uid);
         setDoc(userRef, {
@@ -106,6 +218,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Load persisted OpenRouter settings from Firestore
         await syncSettingsFromFirestore(currentUser.uid);
+      } else {
+        setGithubConnection({
+          connected: false,
+          username: null,
+          avatarUrl: null,
+          status: 'idle',
+          error: null,
+        });
       }
     });
 
@@ -142,7 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const signInWithGoogle = async () => {
+  const signInToAppWithGoogle = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
@@ -151,7 +271,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const hostname = window.location.hostname;
       const messages: Record<string, string> = {
         'auth/popup-blocked': `The sign-in popup was blocked. Allow popups for ${hostname} and try again.`,
-        'auth/unauthorized-domain': `${hostname} is not authorized in Firebase Authentication settings.`,
+        'auth/unauthorized-domain': `This deployment domain (${hostname}) is not authorized in Firebase Authentication settings.`,
         'auth/operation-not-allowed': 'Google sign-in is not enabled in Firebase Authentication.',
         'auth/popup-closed-by-user': 'The Google sign-in window was closed before completing sign-in.',
       };
@@ -162,25 +282,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signOut = async () => {
+  const connectGitHubAccount = async () => {
+    const currentUser = auth.currentUser;
+
+    if (currentUser?.providerData.some(p => p.providerId === 'github.com')) {
+      setGithubConnection(prev => ({
+        ...prev,
+        connected: true,
+        status: 'connected',
+        error: 'GitHub is already connected.',
+      }));
+      return;
+    }
+
+    const provider = createGitHubProvider();
+    setGithubConnection(prev => ({ ...prev, status: 'connecting', error: null }));
+
     try {
-      await fbSignOut(auth);
-    } catch (error) {
-      console.error('Sign Out Error:', error);
+      let result: UserCredential;
+      if (currentUser) {
+        result = await linkWithPopup(currentUser, provider);
+      } else {
+        result = await signInWithPopup(auth, provider);
+      }
+      await completeGitHubConnection(result);
+    } catch (error: any) {
+      const fallbackErrors = [
+        'auth/popup-blocked',
+        'auth/popup-closed-by-user',
+        'auth/cancelled-popup-request',
+        'auth/operation-not-supported-in-this-environment',
+      ];
+
+      if (fallbackErrors.includes(error?.code)) {
+        try {
+          sessionStorage.setItem(
+            'pendingGitHubConnection',
+            JSON.stringify({
+              returnPath: window.location.pathname + window.location.search + window.location.hash,
+              startedAt: Date.now(),
+            })
+          );
+        } catch {
+          // sessionStorage disabled or unavailable
+        }
+
+        setGithubConnection(prev => ({ ...prev, status: 'redirecting', error: null }));
+
+        if (auth.currentUser) {
+          await linkWithRedirect(auth.currentUser, provider);
+        } else {
+          await signInWithRedirect(auth, provider);
+        }
+        return;
+      }
+
+      let errorMsg = error?.message || 'GitHub connection failed.';
+      if (error?.code === 'auth/unauthorized-domain') {
+        const hostname = window.location.hostname;
+        errorMsg = `This deployment domain (${hostname}) is not authorized in Firebase Authentication settings.`;
+      } else if (error?.code === 'auth/credential-already-in-use' || error?.code === 'auth/provider-already-linked') {
+        errorMsg = 'This GitHub account is already linked to another user account.';
+      } else if (error?.code === 'auth/account-exists-with-different-credential') {
+        errorMsg = 'This email address is already linked to another sign-in provider.';
+      }
+
+      setGithubConnection(prev => ({
+        ...prev,
+        status: 'error',
+        error: errorMsg,
+      }));
+
+      throw new Error(errorMsg);
     }
   };
 
-  const signInWithGitHub = async () => {
-    try {
-      await signInWithPopup(auth, githubProvider);
-    } catch (error: any) {
-      if (error?.code === 'auth/popup-blocked') {
-        await signInWithRedirect(auth, githubProvider);
-        return;
+  const disconnectGitHub = async () => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const ghProviderData = currentUser.providerData.find(p => p.providerId === 'github.com');
+      if (ghProviderData) {
+        try {
+          await unlink(currentUser, 'github.com');
+        } catch (err) {
+          console.warn('Unlink github error:', err);
+        }
       }
-      if (error?.code === 'auth/popup-closed-by-user') throw new Error('GitHub sign-in was cancelled.');
-      if (error?.code === 'auth/account-exists-with-different-credential') throw new Error('This email already uses another sign-in provider. Sign in with that provider first.');
-      throw new Error(error?.message || 'GitHub sign-in failed.');
+      try {
+        await setDoc(doc(db, 'users', currentUser.uid, 'connections', 'github'), {
+          connected: false,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } catch {
+        // ignore
+      }
+    }
+    setGithubConnection({
+      connected: false,
+      username: null,
+      avatarUrl: null,
+      status: 'idle',
+      error: null,
+    });
+  };
+
+  const signOut = async () => {
+    try {
+      await fbSignOut(auth);
+      setGithubConnection({
+        connected: false,
+        username: null,
+        avatarUrl: null,
+        status: 'idle',
+        error: null,
+      });
+    } catch (error) {
+      console.error('Sign Out Error:', error);
     }
   };
 
@@ -285,9 +502,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         loading,
-        signInWithGoogle,
-        signInWithGitHub,
+        signInWithGoogle: signInToAppWithGoogle,
+        signInToAppWithGoogle,
+        signInWithGitHub: connectGitHubAccount,
+        connectGitHubAccount,
+        disconnectGitHub,
         signOut,
+        githubConnection,
         saveReviewToCloud,
         saveChatToCloud,
         saveDiagramToCloud,

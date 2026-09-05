@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "emulators": "firebase emulators:start --only auth,firestore,storage",
+    "emulators": "firebase emulators:start --only auth,firestore,storage,functions",
     "test:rules": "firebase emulators:exec --only firestore,storage \"npm run lint\""
   },
   "dependencies": {

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ChatMessage, ImportedProject, ReviewResult, ReviewSession } from '../types';
+import { functions, httpsCallable } from '../lib/firebase';
 
 interface Finding {
   line: number;
@@ -223,7 +224,6 @@ export function ReviewRunner({ project }: { project?: ImportedProject | null }) 
     setIntelResultText(null);
 
     try {
-      const endpoint = isOpenRouterModel ? '/api/openrouter/analyze' : '/api/gemini/analyze';
       const effectiveModel = isOpenRouterModel
         ? (openRouterConfig.customModelName || openRouterConfig.selectedModel || activeModel)
         : activeModel;
@@ -232,27 +232,19 @@ export function ReviewRunner({ project }: { project?: ImportedProject | null }) 
         : [{ path: activeSample, content: code }];
       if (!reviewInputs.length) throw new Error('Select at least one supported file to review.');
 
-      const reviews: { path: string; review: any; sessionId?: string }[] = [];
-      for (let index = 0; index < reviewInputs.length; index++) {
-        const reviewInput = reviewInputs[index];
-        setReviewProgress(`Reviewing files: ${index + 1}/${reviewInputs.length}`);
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code: reviewInput.content,
-            filePath: reviewInput.path,
-            task: 'review',
-            model: effectiveModel,
-            temperature: openRouterConfig.temperature ?? 0.2,
-          })
-        });
-        const payload = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(payload?.error || `Review request failed (HTTP ${res.status}).`);
-        const review = payload?.review || payload?.structured;
-        if (!review || !Array.isArray(review.findings)) throw new Error(`The review response for ${reviewInput.path} was invalid.`);
-        reviews.push({ path: reviewInput.path, review, sessionId: payload.sessionId });
-      }
+      const startStructuredReview = httpsCallable(functions, 'startStructuredReview');
+      setReviewProgress(`Reviewing files: 0/${reviewInputs.length}`);
+      const result = await startStructuredReview({
+        projectId: project?.id || crypto.randomUUID(),
+        projectName: project?.name || activeSample,
+        sourceType: project?.sourceType || 'pasted',
+        scope: project ? 'selected-files' : 'single-file',
+        files: reviewInputs.map(input => ({ path: input.path, language: project?.files.find(file => file.path === input.path)?.language || 'python', content: input.content })),
+        model: effectiveModel,
+      });
+      const payload: any = result.data;
+      if (!payload?.success || !payload.review || !Array.isArray(payload.review.issues)) throw new Error('The review response was missing structured findings.');
+      const reviews = [{ path: activeSample, review: { ...payload.review, findings: payload.review.issues }, sessionId: payload.sessionId }];
 
       const combinedFindings = reviews.flatMap(item => item.review.findings.map((finding: Finding) => ({ ...finding, title: reviews.length > 1 ? `[${item.path}] ${finding.title}` : finding.title })));
       const averageScore = Math.round(reviews.reduce((total, item) => total + (item.review.qualityScore || 0), 0) / reviews.length);
@@ -265,6 +257,7 @@ export function ReviewRunner({ project }: { project?: ImportedProject | null }) 
 
       const session: ReviewSession = {
         id: reviews[0].sessionId || crypto.randomUUID(),
+        projectId: project?.id || activeSample,
         filename: activeSample,
         sourceCode: reviewInputs.map(input => `# ${input.path}\n${input.content}`).join('\n\n'),
         model: effectiveModel,
@@ -285,9 +278,23 @@ export function ReviewRunner({ project }: { project?: ImportedProject | null }) 
         if (!savedId) setCloudStatus('Review completed, but cloud synchronization failed.');
       }
     } catch (err: any) {
-      console.error('Structured review failed:', err);
+      console.error('Structured review failed:', {
+        code: err?.code,
+        message: err?.message,
+        details: err?.details,
+      });
       setReviewSession(null);
-      setReviewError(err.message || 'The review could not be completed.');
+      let errorMsg = err?.message || 'The review could not be completed.';
+      if (err?.code === 'functions/not-found' || (typeof err?.message === 'string' && err.message.includes('404'))) {
+        errorMsg = 'The review service is not deployed or the Firebase region is incorrect.';
+      } else if (err?.code === 'functions/unauthenticated') {
+        errorMsg = 'Sign in before starting a review.';
+      } else if (err?.code === 'functions/unavailable') {
+        errorMsg = 'The review service is temporarily unavailable.';
+      } else if (err?.code === 'functions/deadline-exceeded') {
+        errorMsg = 'The review timed out. Try fewer files.';
+      }
+      setReviewError(errorMsg);
       setSessionStatus('error');
     } finally {
       setIsReviewing(false);
@@ -349,32 +356,39 @@ export function ReviewRunner({ project }: { project?: ImportedProject | null }) 
     setSessionStatus('asking');
 
     try {
-      const res = await fetch('/api/review/followup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: reviewSession.id,
-          filename: reviewSession.filename,
-          sourceCode: reviewSession.sourceCode,
-          structuredReview: reviewSession.review,
-          conversationHistory: messages,
-          question: userQ,
-          model: reviewSession.model,
-        }),
+      const sendReviewFollowUp = httpsCallable(functions, 'sendReviewFollowUp');
+      const result = await sendReviewFollowUp({
+        projectId: project?.id || reviewSession.filename,
+        sessionId: reviewSession.id,
+        question: userQ,
+        model: reviewSession.model,
       });
-      const payload = await res.json().catch(() => null);
-      if (!res.ok || !payload?.success || !payload.answer) throw new Error(payload?.error || `Follow-up request failed (HTTP ${res.status}).`);
+      const payload: any = result.data;
+      if (!payload?.success || !payload.answer) throw new Error(payload?.error || 'Follow-up request failed.');
       setQuestion('');
       setMessages(prev => [...prev, { role: 'assistant', content: payload.answer }]);
       setReviewSession(prev => prev ? { ...prev, messages: [...prev.messages, { role: 'user', content: userQ }, { role: 'assistant', content: payload.answer }] } : prev);
       setSessionStatus('ready');
     } catch (err: any) {
+      console.error('Follow-up request failed:', {
+        code: err?.code,
+        message: err?.message,
+        details: err?.details,
+      });
       setSessionStatus('ready');
+      let errorMsg = err?.message || 'Follow-up request failed.';
+      if (err?.code === 'functions/not-found' || (typeof err?.message === 'string' && err.message.includes('404'))) {
+        errorMsg = 'The follow-up service is not deployed or the Firebase region is incorrect.';
+      } else if (err?.code === 'functions/unauthenticated') {
+        errorMsg = 'Sign in before sending follow-up questions.';
+      } else if (err?.code === 'functions/unavailable') {
+        errorMsg = 'The follow-up service is temporarily unavailable.';
+      }
       setMessages(prev => [
         ...prev,
         {
           role: 'assistant',
-          content: `Follow-up failed: ${err.message}`
+          content: `Follow-up failed: ${errorMsg}`
         }
       ]);
     } finally {
@@ -575,9 +589,14 @@ export function ReviewRunner({ project }: { project?: ImportedProject | null }) 
             </button>
           </div>
           {reviewError && (
-            <div className="p-3.5 border-t border-rose-200 bg-rose-50 text-xs text-rose-700" role="alert">
+            <div className="p-3.5 border-t border-rose-200 bg-rose-50 text-xs text-rose-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2" role="alert">
               <div>{reviewError}</div>
-              <button type="button" onClick={handleRunReview} className="mt-2 font-semibold underline">Retry Review</button>
+              <div className="flex items-center gap-3">
+                {reviewError.includes('Sign in') && !user && (
+                  <button type="button" onClick={() => signInWithGoogle()} className="font-bold underline text-rose-800 hover:text-rose-950">Sign In with Google</button>
+                )}
+                <button type="button" onClick={handleRunReview} className="font-semibold underline">Retry Review</button>
+              </div>
             </div>
           )}
         </div>

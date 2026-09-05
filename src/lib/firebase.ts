@@ -1,7 +1,23 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator, GoogleAuthProvider, GithubAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as fbSignOut, onAuthStateChanged, User } from 'firebase/auth';
+import { 
+  getAuth, 
+  connectAuthEmulator, 
+  GoogleAuthProvider, 
+  GithubAuthProvider, 
+  signInWithPopup, 
+  signInWithRedirect, 
+  linkWithPopup,
+  linkWithRedirect,
+  getRedirectResult, 
+  getAdditionalUserInfo,
+  unlink,
+  signOut as fbSignOut, 
+  onAuthStateChanged, 
+  User 
+} from 'firebase/auth';
 import { getStorage, connectStorageEmulator, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
 import { 
   getFirestore, 
   collection, 
@@ -36,16 +52,25 @@ const app = getApps().length > 0 ? getApp() : initializeApp(configuredFirebase);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+const functions = getFunctions(app, 'us-central1');
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
-const githubProvider = new GithubAuthProvider();
-githubProvider.addScope('read:user');
-githubProvider.addScope('user:email');
+
+function createGitHubProvider() {
+  const provider = new GithubAuthProvider();
+  provider.addScope('read:user');
+  provider.addScope('user:email');
+  provider.addScope('repo');
+  return provider;
+}
+
+const githubProvider = createGitHubProvider();
 
 if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
   connectStorageEmulator(storage, '127.0.0.1', 9199);
+  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
 }
 
 if (import.meta.env.PROD && import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY) {
@@ -57,15 +82,23 @@ export {
   auth, 
   db, 
   storage,
+  functions,
+  httpsCallable,
   ref,
   uploadBytesResumable,
   getDownloadURL,
   googleProvider, 
   githubProvider,
+  createGitHubProvider,
+  GithubAuthProvider,
   signInWithPopup, 
-  fbSignOut,
   signInWithRedirect,
+  linkWithPopup,
+  linkWithRedirect,
   getRedirectResult,
+  getAdditionalUserInfo,
+  unlink,
+  fbSignOut,
   onAuthStateChanged,
   collection, 
   doc, 

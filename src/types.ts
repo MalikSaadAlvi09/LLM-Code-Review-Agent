@@ -20,6 +20,7 @@ export interface ChatMessage {
 
 export interface ReviewSession {
   id: string;
+  projectId: string;
   filename: string;
   sourceCode: string;
   model: string;

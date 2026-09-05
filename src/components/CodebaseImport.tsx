@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { Archive, Check, ChevronDown, ChevronRight, FileCode, FolderOpen, Github, Loader2, Search, Trash2, UploadCloud } from 'lucide-react';
 import { IMPORT_LIMITS, ImportedCodeFile, ImportedProject, ProjectSourceType } from '../types';
 import { persistImportedProject } from '../lib/firebaseProjects';
+import { useAuth } from '../context/AuthContext';
 
 interface CodebaseImportProps {
   project: ImportedProject | null;
@@ -81,6 +82,7 @@ function makeProject(name: string, sourceType: ProjectSourceType, files: Importe
 }
 
 export function CodebaseImport({ project, onProjectChange, onReviewProject, userUid, onConnectGitHub }: CodebaseImportProps) {
+  const { connectGitHubAccount, disconnectGitHub, githubConnection } = useAuth();
   const folderInput = useRef<HTMLInputElement>(null);
   const filesInput = useRef<HTMLInputElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
@@ -95,6 +97,19 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
   useEffect(() => {
     fetch('/api/github/repos').then(async response => response.ok ? setGithubRepos((await response.json()).repositories || []) : undefined).catch(() => undefined);
   }, []);
+
+  const handleConnectClick = async () => {
+    setError(null);
+    try {
+      if (onConnectGitHub) {
+        await onConnectGitHub();
+      } else {
+        await connectGitHubAccount();
+      }
+    } catch (err: any) {
+      setError(err.message || 'GitHub connection failed.');
+    }
+  };
 
   const addFiles = async (entries: { file: File; path: string }[], sourceType: ProjectSourceType, name: string) => {
     setProcessing(true); setError(null);
@@ -170,9 +185,50 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
       <button onClick={() => zipInput.current?.click()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><Archive className="w-4 h-4 text-amber-600" />Upload ZIP</button>
       <button onClick={() => filesInput.current?.click()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><UploadCloud className="w-4 h-4 text-emerald-600" />Upload Files</button>
       <button onClick={() => document.getElementById('github-url-import')?.focus()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><Github className="w-4 h-4 text-neutral-800" />Import GitHub</button>
-      <button onClick={() => { if (onConnectGitHub) void onConnectGitHub().catch((err: any) => setError(err.message || 'GitHub sign-in failed.')); else setError('Sign in is required to connect GitHub.'); }} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><Github className="w-4 h-4 text-neutral-800" />Connect GitHub</button>
+      
+      {githubConnection.connected ? (
+        <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/60 text-xs font-semibold flex flex-col items-center justify-center gap-1 text-center">
+          <div className="flex items-center gap-1 text-emerald-800 font-bold">
+            <Check className="w-3.5 h-3.5" />
+            <span>GitHub Connected</span>
+          </div>
+          <span className="font-mono text-[10px] text-emerald-700 truncate max-w-[110px]">@{githubConnection.username || 'user'}</span>
+          <div className="flex items-center gap-2 mt-0.5">
+            <button onClick={() => document.getElementById('github-url-import')?.focus()} className="text-[10px] text-blue-700 hover:underline">Browse Repositories</button>
+            <button onClick={() => void disconnectGitHub()} className="text-[10px] text-rose-600 hover:underline">Disconnect</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => void handleConnectClick()} disabled={githubConnection.status === 'connecting' || githubConnection.status === 'redirecting'} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2 disabled:opacity-50">
+          <Github className="w-4 h-4 text-neutral-800" />
+          <span>{githubConnection.status === 'connecting' ? 'Connecting...' : githubConnection.status === 'redirecting' ? 'Redirecting...' : 'Connect GitHub'}</span>
+        </button>
+      )}
+
       <button onClick={() => document.getElementById('paste-code-import')?.focus()} className="p-3 rounded-xl border border-neutral-200 hover:bg-neutral-50 text-xs font-semibold flex flex-col items-center gap-2"><FileCode className="w-4 h-4 text-purple-600" />Paste Code</button>
     </div>
+    
+    {githubConnection.status === 'connecting' && (
+      <div className="flex items-center gap-2 p-3 rounded-xl border border-blue-200 bg-blue-50 text-xs text-blue-800 font-medium animate-pulse">
+        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+        <span>Opening GitHub authorization...</span>
+      </div>
+    )}
+
+    {githubConnection.status === 'redirecting' && (
+      <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800 font-medium animate-pulse">
+        <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+        <span>Redirecting to GitHub...</span>
+      </div>
+    )}
+
+    {githubConnection.connected && (
+      <div className="flex items-center gap-2 p-3 rounded-xl border border-emerald-200 bg-emerald-50 text-xs text-emerald-800 font-medium">
+        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+        <span>GitHub connected as <strong className="font-mono">@{githubConnection.username || 'user'}</strong></span>
+      </div>
+    )}
+
     <input ref={folderInput} type="file" webkitdirectory="true" directory="true" multiple hidden onChange={event => handleFileList(event.target.files, 'folder', 'Imported folder')} />
     <input ref={filesInput} type="file" multiple hidden onChange={event => handleFileList(event.target.files, 'files', 'Imported files')} />
     <input ref={zipInput} type="file" accept=".zip,application/zip" hidden onChange={event => void handleZip(event.target.files?.[0])} />
@@ -181,7 +237,7 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
     {githubRepos.length > 0 && <div className="rounded-xl border border-neutral-200 p-3 space-y-2"><div className="flex items-center justify-between text-xs font-semibold"><span>Connected GitHub repositories</span><button onClick={() => { void fetch('/api/github/disconnect', { method: 'POST' }); setGithubRepos([]); }} className="text-rose-600">Disconnect</button></div><div className="max-h-28 overflow-y-auto space-y-1">{githubRepos.map(repo => <button key={repo.id} onClick={() => setGithubUrl(repo.url)} className="w-full text-left px-2 py-1 rounded hover:bg-neutral-50 text-xs"><span className="font-mono">{repo.fullName}</span>{repo.isPrivate && <span className="ml-2 text-[10px] text-amber-600">private</span>}</button>)}</div></div>}
     <div className="flex gap-2"><textarea id="paste-code-import" value={pastedCode} onChange={event => setPastedCode(event.target.value)} placeholder="Paste code here to import it as a project file..." rows={2} className="flex-1 px-3 py-2 rounded-lg border border-neutral-300 text-xs font-mono" /><button onClick={() => { const file = new File([pastedCode], 'pasted_code.py', { type: 'text/plain' }); void addFiles([{ file, path: 'pasted_code.py' }], 'pasted', 'Pasted code'); setPastedCode(''); }} disabled={!pastedCode.trim() || processing} className="px-3 py-2 rounded-lg border text-xs font-semibold disabled:opacity-40">Import pasted code</button></div>
     {processing && <div className="flex items-center gap-2 text-xs text-blue-700"><Loader2 className="w-3.5 h-3.5 animate-spin" />Processing import...</div>}
-    {error && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700" role="alert">{error}</div>}
+    {(error || githubConnection.error) && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700" role="alert">{error || githubConnection.error}</div>}
     {project && <div className="border-t border-neutral-200 pt-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><span className="text-sm font-bold text-neutral-900">{project.name}</span><span className="ml-2 text-[10px] uppercase text-neutral-500">{project.sourceType}</span>{project.repository?.branch && <span className="ml-2 text-[10px] font-mono text-neutral-500">branch: {project.repository.branch}</span>}</div><button onClick={() => onProjectChange(null)} className="text-xs text-rose-600 flex items-center gap-1"><Trash2 className="w-3 h-3" />Clear Project</button></div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs"><span>{project.files.length} imported</span><span>{readyFiles.length} supported</span><span>{project.files.filter(file => file.status !== 'ready').length} ignored</span><span>{lines} selected lines</span><span>~{Math.ceil(selectedFiles.reduce((total, file) => total + file.content.length, 0) / 4)} tokens</span></div>
