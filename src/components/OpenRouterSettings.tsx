@@ -20,13 +20,14 @@ import {
   Terminal, 
   Info,
   Server,
-  Play
+  Play,
+  Palette
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { POPULAR_OPENROUTER_MODELS, OpenRouterModelInfo } from '../types';
 
 export function OpenRouterSettings() {
-  const { user, openRouterConfig, saveOpenRouterConfig, signInWithGoogle } = useAuth();
+  const { user, openRouterConfig, saveOpenRouterConfig, signInWithGoogle, theme, setTheme, availableThemes } = useAuth();
 
   const [apiKey, setApiKey] = useState(openRouterConfig.apiKey || '');
   const [selectedModel, setSelectedModel] = useState(openRouterConfig.selectedModel || 'nvidia/llama-3.1-nemotron-70b-instruct');
@@ -335,6 +336,45 @@ export function OpenRouterSettings() {
                   Gemini 3.5 Flash & 3.1 Pro Native
                 </p>
               </button>
+            </div>
+          </div>
+
+          {/* Appearance & Color Themes Card */}
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Appearance & Themes</span>
+              </label>
+              <span className="text-[10px] font-mono font-medium text-neutral-400">Synced to cloud</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {availableThemes.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTheme(t.id)}
+                  className={`p-3 rounded-xl border text-left transition flex flex-col justify-between space-y-2 relative overflow-hidden ${
+                    theme === t.id
+                      ? 'border-neutral-950 bg-neutral-950 text-white shadow-xs dark:bg-neutral-800 dark:border-neutral-700 ring-2 ring-neutral-950 dark:ring-neutral-700 ring-offset-1'
+                      : 'border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className={`w-4 h-4 rounded-full border ${t.borderPreview} ${t.bgPreview} flex items-center justify-center p-0.5 shadow-2xs`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${t.accentPreview}`} />
+                    </div>
+                    {theme === t.id && <Check className="w-3.5 h-3.5 text-amber-400" />}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold leading-tight">{t.name}</div>
+                    <div className={`text-[10px] truncate mt-0.5 ${theme === t.id ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                      {t.description}
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
 

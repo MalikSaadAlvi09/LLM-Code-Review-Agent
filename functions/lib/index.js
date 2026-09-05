@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerGitHubConnection = exports.sendReviewFollowUp = exports.startStructuredReview = void 0;
+exports.importGitHubRepository = exports.registerGitHubConnection = exports.sendReviewFollowUp = exports.startStructuredReview = void 0;
 const crypto_1 = require("crypto");
 const firestore_1 = require("firebase-admin/firestore");
 const storage_1 = require("firebase-admin/storage");
@@ -141,6 +141,7 @@ exports.sendReviewFollowUp = (0, https_1.onCall)({ region: 'us-central1', timeou
     }
 });
 exports.registerGitHubConnection = (0, https_1.onCall)({ region: 'us-central1', enforceAppCheck: false }, async (request) => {
+    const db = (0, firestore_1.getFirestore)();
     const uid = requireAuth(request);
     const { accessToken } = request.data || {};
     if (!accessToken)
@@ -155,12 +156,26 @@ exports.registerGitHubConnection = (0, https_1.onCall)({ region: 'us-central1', 
     if (!ghRes.ok)
         throw new https_1.HttpsError('unauthenticated', 'Invalid or expired GitHub access token.');
     const ghUser = await ghRes.json();
-    const db = (0, firestore_1.getFirestore)();
     await db.doc(`users/${uid}/connections/github`).set({
+        provider: 'github',
         connected: true,
         username: ghUser.login,
         avatarUrl: ghUser.avatar_url,
         githubId: ghUser.id,
+        updatedAt: firestore_1.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await db.doc(`users/${uid}/githubConnections/primary`).set({
+        provider: 'github',
+        githubUserId: ghUser.id,
+        login: ghUser.login,
+        avatarUrl: ghUser.avatar_url,
+        status: 'connected',
+        connectedAt: firestore_1.FieldValue.serverTimestamp(),
+        updatedAt: firestore_1.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    // Store access token in protected secretConnections subcollection
+    await db.doc(`users/${uid}/secretConnections/github`).set({
+        accessToken,
         updatedAt: firestore_1.FieldValue.serverTimestamp(),
     }, { merge: true });
     return {
@@ -169,3 +184,5 @@ exports.registerGitHubConnection = (0, https_1.onCall)({ region: 'us-central1', 
         avatarUrl: ghUser.avatar_url,
     };
 });
+var importGitHubRepository_1 = require("./github/importGitHubRepository");
+Object.defineProperty(exports, "importGitHubRepository", { enumerable: true, get: function () { return importGitHubRepository_1.importGitHubRepository; } });

@@ -4,6 +4,7 @@ import { Archive, Check, ChevronDown, ChevronRight, FileCode, FolderOpen, Github
 import { IMPORT_LIMITS, ImportedCodeFile, ImportedProject, ProjectSourceType } from '../types';
 import { persistImportedProject } from '../lib/firebaseProjects';
 import { useAuth } from '../context/AuthContext';
+import { functions, httpsCallable } from '../lib/firebase';
 
 interface CodebaseImportProps {
   project: ImportedProject | null;
@@ -98,19 +99,6 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
     fetch('/api/github/repos').then(async response => response.ok ? setGithubRepos((await response.json()).repositories || []) : undefined).catch(() => undefined);
   }, []);
 
-  const handleConnectClick = async () => {
-    setError(null);
-    try {
-      if (onConnectGitHub) {
-        await onConnectGitHub();
-      } else {
-        await connectGitHubAccount();
-      }
-    } catch (err: any) {
-      setError(err.message || 'GitHub connection failed.');
-    }
-  };
-
   const addFiles = async (entries: { file: File; path: string }[], sourceType: ProjectSourceType, name: string) => {
     setProcessing(true); setError(null);
     try {
@@ -142,7 +130,7 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
         if (entry.dir) continue;
         const normalized = path.replaceAll('\\', '/');
         if (normalized.startsWith('/') || normalized.split('/').includes('..')) throw new Error(`Unsafe ZIP path rejected: ${path}`);
-        const data = await entry.async('uint8array');
+        const data = await entry.async('arraybuffer');
         extractedBytes += data.byteLength;
         if (extractedBytes > IMPORT_LIMITS.maxExtractedBytes) throw new Error('ZIP extracted content exceeds the 200 MB limit.');
         entries.push({ file: new File([data], path.split('/').pop() || 'file'), path });
@@ -152,22 +140,125 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
     } catch (err: any) { setError(err.message || 'The ZIP archive is corrupted or unsupported.'); setProcessing(false); }
   };
 
-  const importGithub = async () => {
-    setError(null);
+  useEffect(() => {
     try {
-      const parsed = new URL(githubUrl.trim());
-      if (parsed.hostname !== 'github.com') throw new Error('Enter a github.com repository URL.');
-      const parts = parsed.pathname.split('/').filter(Boolean);
-      if (parts.length < 2) throw new Error('Use https://github.com/owner/repository.');
-      const response = await fetch('/api/github/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: githubUrl.trim() }) });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || `GitHub import failed (HTTP ${response.status}).`);
+      const pendingStr = sessionStorage.getItem('pendingGitHubImport');
+      if (pendingStr) {
+        const pending = JSON.parse(pendingStr);
+        if (pending?.repositoryUrl && githubConnection.connected && !processing) {
+          sessionStorage.removeItem('pendingGitHubImport');
+          setGithubUrl(pending.repositoryUrl);
+          void importGithub(pending.repositoryUrl);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [githubConnection.connected]);
+
+  const handleConnectClick = async () => {
+    setError(null);
+    if (githubUrl.trim()) {
+      try {
+        sessionStorage.setItem(
+          'pendingGitHubImport',
+          JSON.stringify({
+            repositoryUrl: githubUrl.trim(),
+            returnPath: window.location.pathname + window.location.search,
+          })
+        );
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      if (onConnectGitHub) {
+        await onConnectGitHub();
+      } else {
+        await connectGitHubAccount();
+      }
+    } catch (err: any) {
+      setError(err.message || 'GitHub connection failed.');
+    }
+  };
+
+  const importGithub = async (overrideUrl?: string) => {
+    const urlToUse = (overrideUrl || githubUrl).trim();
+    if (!urlToUse) return;
+
+    setError(null);
+    setProcessing(true);
+
+    try {
+      const importCallable = httpsCallable<{ repositoryUrl: string; branch?: string | null }, any>(
+        functions,
+        'importGitHubRepository'
+      );
+
+      const result = await importCallable({
+        repositoryUrl: urlToUse,
+        branch: null,
+      });
+
+      const payload = result.data;
+      if (!payload?.success || !payload?.projectId) {
+        throw new Error(payload?.message || 'GitHub repository import failed.');
+      }
+
       const files = (payload.files || []) as ImportedCodeFile[];
-      const nextProject = makeProject(payload.repository?.name || parts[1], 'github', files, payload.repository);
+      const nextProject = makeProject(
+        payload.repository?.name || urlToUse.split('/').filter(Boolean).pop()?.replace(/\.git$/i, '') || 'repository',
+        'github',
+        files,
+        payload.repository
+      );
+
       onProjectChange(nextProject);
-      if (userUid) void persistImportedProject(userUid, nextProject).catch(() => setError('Imported locally, but Firebase Storage synchronization failed.'));
+      if (userUid) {
+        void persistImportedProject(userUid, nextProject).catch(() =>
+          setError('Imported locally, but Firebase Storage synchronization failed.')
+        );
+      }
       setGithubUrl('');
-    } catch (err: any) { setError(err.message || 'Could not import this GitHub repository.'); }
+      sessionStorage.removeItem('pendingGitHubImport');
+    } catch (err: any) {
+      const parts = urlToUse.split('/').filter(Boolean);
+      const ownerCandidate = parts[2] || parts[1] || 'unknown';
+      const repoCandidate = (parts[3] || parts[2] || 'unknown').replace(/\.git$/i, '');
+
+      console.error('GitHub import failed', {
+        requestedUrl: urlToUse,
+        requestType: 'FIREBASE_CALLABLE',
+        status: err?.code || err?.name || 500,
+        responseContentType: 'application/json',
+        firebaseFunctionName: 'importGitHubRepository',
+        firebaseRegion: 'us-central1',
+        githubOwner: ownerCandidate,
+        githubRepository: repoCandidate,
+        githubApiStatus: err?.code || 'error',
+        githubRequestId: undefined,
+      });
+
+      let userMsg = err?.message || 'Could not import this GitHub repository.';
+
+      if (err?.code === 'functions/permission-denied' || userMsg.includes('private') || userMsg.includes('access')) {
+        if (!githubConnection.connected) {
+          userMsg = 'Repository not found or it is private. Connect the GitHub account that has access to this repository and try again.';
+        } else {
+          userMsg = 'Your connected GitHub account does not have access to this repository. Check repository permissions or organization SSO.';
+        }
+      } else if (err?.code === 'functions/unauthenticated') {
+        userMsg = 'Sign in before importing a repository. Connect the GitHub account that has access to this repository and try again.';
+      } else if (err?.code === 'functions/resource-exhausted') {
+        userMsg = 'GitHub API rate limit reached or repository tree is too large. Connect GitHub or try again later.';
+      } else if (err?.code === 'functions/not-found') {
+        userMsg = 'Repository not found. Check the owner and repository name.';
+      }
+
+      setError(userMsg);
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const visibleFiles = project?.files.filter(file => file.path.toLowerCase().includes(search.toLowerCase())) || [];
@@ -237,7 +328,20 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
     {githubRepos.length > 0 && <div className="rounded-xl border border-neutral-200 p-3 space-y-2"><div className="flex items-center justify-between text-xs font-semibold"><span>Connected GitHub repositories</span><button onClick={() => { void fetch('/api/github/disconnect', { method: 'POST' }); setGithubRepos([]); }} className="text-rose-600">Disconnect</button></div><div className="max-h-28 overflow-y-auto space-y-1">{githubRepos.map(repo => <button key={repo.id} onClick={() => setGithubUrl(repo.url)} className="w-full text-left px-2 py-1 rounded hover:bg-neutral-50 text-xs"><span className="font-mono">{repo.fullName}</span>{repo.isPrivate && <span className="ml-2 text-[10px] text-amber-600">private</span>}</button>)}</div></div>}
     <div className="flex gap-2"><textarea id="paste-code-import" value={pastedCode} onChange={event => setPastedCode(event.target.value)} placeholder="Paste code here to import it as a project file..." rows={2} className="flex-1 px-3 py-2 rounded-lg border border-neutral-300 text-xs font-mono" /><button onClick={() => { const file = new File([pastedCode], 'pasted_code.py', { type: 'text/plain' }); void addFiles([{ file, path: 'pasted_code.py' }], 'pasted', 'Pasted code'); setPastedCode(''); }} disabled={!pastedCode.trim() || processing} className="px-3 py-2 rounded-lg border text-xs font-semibold disabled:opacity-40">Import pasted code</button></div>
     {processing && <div className="flex items-center gap-2 text-xs text-blue-700"><Loader2 className="w-3.5 h-3.5 animate-spin" />Processing import...</div>}
-    {(error || githubConnection.error) && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700" role="alert">{error || githubConnection.error}</div>}
+    {(error || githubConnection.error) && (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 space-y-2" role="alert">
+        <div>{error || githubConnection.error}</div>
+        {((error || '').includes('private') || (error || '').includes('Connect') || (error || '').includes('access')) && !githubConnection.connected && (
+          <button
+            onClick={() => void handleConnectClick()}
+            className="px-3 py-1.5 rounded-md bg-neutral-900 text-white text-xs font-bold flex items-center gap-1.5 hover:bg-neutral-800 transition shadow-2xs"
+          >
+            <Github className="w-3.5 h-3.5 text-amber-300" />
+            <span>Connect GitHub Account</span>
+          </button>
+        )}
+      </div>
+    )}
     {project && <div className="border-t border-neutral-200 pt-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><span className="text-sm font-bold text-neutral-900">{project.name}</span><span className="ml-2 text-[10px] uppercase text-neutral-500">{project.sourceType}</span>{project.repository?.branch && <span className="ml-2 text-[10px] font-mono text-neutral-500">branch: {project.repository.branch}</span>}</div><button onClick={() => onProjectChange(null)} className="text-xs text-rose-600 flex items-center gap-1"><Trash2 className="w-3 h-3" />Clear Project</button></div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs"><span>{project.files.length} imported</span><span>{readyFiles.length} supported</span><span>{project.files.filter(file => file.status !== 'ready').length} ignored</span><span>{lines} selected lines</span><span>~{Math.ceil(selectedFiles.reduce((total, file) => total + file.content.length, 0) / 4)} tokens</span></div>

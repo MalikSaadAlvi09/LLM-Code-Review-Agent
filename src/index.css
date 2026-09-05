@@ -11,6 +11,9 @@
   body {
     font-family: var(--font-sans);
     letter-spacing: 0.01em;
+    background-color: var(--app-bg, #f5f5f7);
+    color: var(--app-fg, #171717);
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -31,3 +34,59 @@
   font-family: 'Lilita One', cursive, sans-serif;
   letter-spacing: 0.03em;
 }
+
+/* Theme Design Tokens */
+html[data-theme="light"] {
+  --app-bg: #f5f5f7;
+  --app-fg: #171717;
+  --header-bg: rgba(255, 255, 255, 0.95);
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --app-bg: #0f172a;
+  --app-fg: #f8fafc;
+  --header-bg: rgba(30, 41, 59, 0.95);
+  --card-bg: #1e293b;
+  --card-border: #334155;
+  color-scheme: dark;
+}
+
+html[data-theme="midnight"] {
+  --app-bg: #020617;
+  --app-fg: #f1f5f9;
+  --header-bg: rgba(15, 23, 42, 0.95);
+  --card-bg: #0f172a;
+  --card-border: #1e293b;
+  color-scheme: dark;
+}
+
+html[data-theme="emerald"] {
+  --app-bg: #09090b;
+  --app-fg: #ecfdf5;
+  --header-bg: rgba(24, 24, 27, 0.95);
+  --card-bg: #18181b;
+  --card-border: #27272a;
+  color-scheme: dark;
+}
+
+html[data-theme="cyberpunk"] {
+  --app-bg: #030712;
+  --app-fg: #f9fafb;
+  --header-bg: rgba(17, 24, 39, 0.95);
+  --card-bg: #111827;
+  --card-border: #1f2937;
+  color-scheme: dark;
+}
+
+html[data-theme="sunset"] {
+  --app-bg: #0c0a09;
+  --app-fg: #fafaf9;
+  --header-bg: rgba(28, 25, 23, 0.95);
+  --card-bg: #1c1917;
+  --card-border: #292524;
+  color-scheme: dark;
+}
+

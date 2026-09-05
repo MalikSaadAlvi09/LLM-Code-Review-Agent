@@ -172,3 +172,73 @@ export const POPULAR_OPENROUTER_MODELS: OpenRouterModelInfo[] = [
     tags: ['DeepSeek', 'MoE', 'V3']
   }
 ];
+
+export type AppTheme = 'light' | 'dark' | 'midnight' | 'emerald' | 'cyberpunk' | 'sunset';
+
+export interface ThemeOption {
+  id: AppTheme;
+  name: string;
+  description: string;
+  bgPreview: string;
+  borderPreview: string;
+  accentPreview: string;
+  isDark: boolean;
+}
+
+export const AVAILABLE_THEMES: ThemeOption[] = [
+  {
+    id: 'light',
+    name: 'Light Modern',
+    description: 'Clean, crisp light interface with high-contrast slate details.',
+    bgPreview: 'bg-neutral-100',
+    borderPreview: 'border-neutral-300',
+    accentPreview: 'bg-neutral-950',
+    isDark: false,
+  },
+  {
+    id: 'dark',
+    name: 'Dark Slate',
+    description: 'Sleek dark mode with balanced neutral slate surfaces.',
+    bgPreview: 'bg-slate-900',
+    borderPreview: 'border-slate-700',
+    accentPreview: 'bg-amber-400',
+    isDark: true,
+  },
+  {
+    id: 'midnight',
+    name: 'Midnight Blue',
+    description: 'Deep ocean dark mode with rich indigo & sapphire accents.',
+    bgPreview: 'bg-slate-950',
+    borderPreview: 'border-indigo-900/80',
+    accentPreview: 'bg-indigo-500',
+    isDark: true,
+  },
+  {
+    id: 'emerald',
+    name: 'Emerald Forest',
+    description: 'Vibrant matrix & terminal inspired deep emerald theme.',
+    bgPreview: 'bg-zinc-950',
+    borderPreview: 'border-emerald-900/80',
+    accentPreview: 'bg-emerald-400',
+    isDark: true,
+  },
+  {
+    id: 'cyberpunk',
+    name: 'Cyberpunk Neon',
+    description: 'Futuristic dark aesthetic with purple glow & cyan highlights.',
+    bgPreview: 'bg-gray-950',
+    borderPreview: 'border-purple-800/80',
+    accentPreview: 'bg-cyan-400',
+    isDark: true,
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset Amber',
+    description: 'Warm cozy dark theme with rich amber & rose accents.',
+    bgPreview: 'bg-stone-950',
+    borderPreview: 'border-amber-900/80',
+    accentPreview: 'bg-amber-500',
+    isDark: true,
+  },
+];
+

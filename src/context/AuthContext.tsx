@@ -21,12 +21,13 @@ import {
   collection, 
   addDoc, 
   getDocs, 
+  deleteDoc,
   query, 
   orderBy, 
   serverTimestamp,
   User 
 } from '../lib/firebase';
-import { OpenRouterConfig } from '../types';
+import { OpenRouterConfig, AppTheme, ThemeOption, AVAILABLE_THEMES } from '../types';
 import { UserCredential } from 'firebase/auth';
 
 export interface GitHubConnectionState {
@@ -40,6 +41,9 @@ export interface GitHubConnectionState {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  theme: AppTheme;
+  setTheme: (theme: AppTheme) => void;
+  availableThemes: ThemeOption[];
   signInWithGoogle: () => Promise<void>;
   signInToAppWithGoogle: () => Promise<void>;
   signInWithGitHub: () => Promise<void>;
@@ -84,6 +88,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const redirectProcessedRef = useRef(false);
 
+  const [theme, setThemeState] = useState<AppTheme>(() => {
+    try {
+      const savedTheme = localStorage.getItem('app_theme') as AppTheme;
+      if (savedTheme && ['light', 'dark', 'midnight', 'emerald', 'cyberpunk', 'sunset'].includes(savedTheme)) {
+        return savedTheme;
+      }
+    } catch (e) {
+      console.warn('Failed to parse app_theme from localStorage', e);
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (theme !== 'light') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  const setTheme = (newTheme: AppTheme) => {
+    setThemeState(newTheme);
+    try {
+      localStorage.setItem('app_theme', newTheme);
+    } catch (e) {
+      console.warn('Failed to save app_theme to localStorage', e);
+    }
+    if (user?.uid) {
+      const appearanceDocRef = doc(db, 'users', user.uid, 'settings', 'appearance');
+      setDoc(appearanceDocRef, { theme: newTheme, updatedAt: serverTimestamp() }, { merge: true }).catch(err => {
+        console.warn('Failed to sync theme to Firestore:', err);
+      });
+    }
+  };
+
   const [openRouterConfig, setOpenRouterConfig] = useState<OpenRouterConfig>(() => {
     try {
       const saved = localStorage.getItem('openrouter_config');
@@ -123,6 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status: 'connected',
       error: null,
     });
+
+    if (sessionStorage.getItem('pendingGitHubImport')) {
+      window.dispatchEvent(new Event('pending-github-import-ready'));
+    }
   };
 
   const handleAuthenticationRedirect = async () => {
@@ -169,6 +213,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const syncSettingsFromFirestore = async (uid: string): Promise<OpenRouterConfig | null> => {
     try {
+      // Sync Appearance Settings
+      const appearanceRef = doc(db, 'users', uid, 'settings', 'appearance');
+      const appearanceSnap = await getDoc(appearanceRef);
+      if (appearanceSnap.exists() && appearanceSnap.data()?.theme) {
+        const cloudTheme = appearanceSnap.data().theme as AppTheme;
+        if (['light', 'dark', 'midnight', 'emerald', 'cyberpunk', 'sunset'].includes(cloudTheme)) {
+          setThemeState(cloudTheme);
+          localStorage.setItem('app_theme', cloudTheme);
+        }
+      }
+
+      // Sync OpenRouter Settings
       const settingsDocRef = doc(db, 'users', uid, 'settings', 'openrouter');
       const snap = await getDoc(settingsDocRef);
       if (snap.exists()) {
@@ -183,7 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return merged;
       }
     } catch (err) {
-      console.warn('Could not load OpenRouter config from Firestore:', err);
+      console.warn('Could not load settings from Firestore:', err);
     }
     return null;
   };
@@ -194,12 +250,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       if (currentUser) {
         const ghProviderData = currentUser.providerData.find(p => p.providerId === 'github.com');
-        if (ghProviderData) {
+        let isConnected = Boolean(ghProviderData);
+        let ghUsername = ghProviderData?.displayName || ghProviderData?.email || 'GitHub User';
+        let ghAvatar = ghProviderData?.photoURL || null;
+
+        try {
+          const connSnap = await getDoc(doc(db, 'users', currentUser.uid, 'connections', 'github'));
+          const primarySnap = await getDoc(doc(db, 'users', currentUser.uid, 'githubConnections', 'primary'));
+
+          if (primarySnap.exists() && primarySnap.data()?.status === 'connected') {
+            isConnected = true;
+            ghUsername = primarySnap.data()?.login || primarySnap.data()?.username || ghUsername;
+            ghAvatar = primarySnap.data()?.avatarUrl || ghAvatar;
+          } else if (connSnap.exists() && connSnap.data()?.connected) {
+            isConnected = true;
+            ghUsername = connSnap.data()?.username || ghUsername;
+            ghAvatar = connSnap.data()?.avatarUrl || ghAvatar;
+          }
+        } catch (err) {
+          console.warn('Could not check GitHub connections in Firestore:', err);
+        }
+
+        if (isConnected) {
           setGithubConnection(prev => ({
             ...prev,
             connected: true,
-            username: ghProviderData.displayName || ghProviderData.email || 'GitHub User',
-            avatarUrl: ghProviderData.photoURL || null,
+            username: ghUsername,
+            avatarUrl: ghAvatar,
             status: 'connected',
           }));
         }
@@ -373,6 +450,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           connected: false,
           updatedAt: serverTimestamp(),
         }, { merge: true });
+        await setDoc(doc(db, 'users', currentUser.uid, 'githubConnections', 'primary'), {
+          status: 'disconnected',
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        await deleteDoc(doc(db, 'users', currentUser.uid, 'secretConnections', 'github'));
       } catch {
         // ignore
       }
@@ -502,6 +584,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         loading,
+        theme,
+        setTheme,
+        availableThemes: AVAILABLE_THEMES,
         signInWithGoogle: signInToAppWithGoogle,
         signInToAppWithGoogle,
         signInWithGitHub: connectGitHubAccount,

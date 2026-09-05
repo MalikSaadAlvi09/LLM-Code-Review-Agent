@@ -21,7 +21,9 @@ import {
   LogIn,
   Sliders,
   Settings as SettingsIcon,
-  Key
+  Key,
+  Palette,
+  ChevronDown
 } from 'lucide-react';
 import { CodeExplorer } from './components/CodeExplorer';
 import { ReviewRunner } from './components/ReviewRunner';
@@ -39,11 +41,12 @@ import { ImportedProject } from './types';
 import { useAuth } from './context/AuthContext';
 
 export default function App() {
-  const { user, signInWithGoogle, signInWithGitHub, signOut, openRouterConfig } = useAuth();
+  const { user, signInWithGoogle, signInWithGitHub, signOut, openRouterConfig, theme, setTheme, availableThemes } = useAuth();
   const [activeTab, setActiveTab] = useState<'simulator' | 'chat' | 'voice' | 'grounding' | 'images' | 'chunking' | 'code' | 'report' | 'cli' | 'settings'>('simulator');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [importedProject, setImportedProject] = useState<ImportedProject | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
 
   const handleGoogleSignIn = async () => {
     setAuthError(null);
@@ -55,9 +58,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-100/60 text-neutral-900 flex flex-col font-sans antialiased">
+    <div className="min-h-screen flex flex-col font-sans antialiased">
       {/* Top Header Navigation */}
-      <header id="main-header" className="border-b border-neutral-200/90 bg-white/95 backdrop-blur sticky top-0 z-30 px-6 py-3 shadow-2xs">
+      <header id="main-header" className="border-b border-neutral-200/90 backdrop-blur sticky top-0 z-30 px-6 py-3 shadow-2xs transition-colors duration-200" style={{ backgroundColor: 'var(--header-bg, rgba(255,255,255,0.95))' }}>
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-neutral-950 text-white flex items-center justify-center shadow-xs">
@@ -65,19 +68,64 @@ export default function App() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-lilita text-lg tracking-wide text-neutral-900">LLM Code Review Agent</h1>
-                <span className="text-[11px] font-baloo font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">
+                <h1 className="font-lilita text-lg tracking-wide text-neutral-900 dark:text-neutral-100">LLM Code Review Agent</h1>
+                <span className="text-[11px] font-baloo font-bold bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 px-2 py-0.5 rounded-full">
                   Gemini & Nemotron 70B
                 </span>
               </div>
-              <p className="text-xs font-fredoka text-neutral-500">
+              <p className="text-xs font-fredoka text-neutral-500 dark:text-neutral-400">
                 Autonomous Python reviewer with Nemotron 70B, Gemini 3.5 Flash, Voice Live API & Cloud Sync
               </p>
             </div>
           </div>
 
-          {/* User Auth, OpenRouter Config and Cloud Button */}
+          {/* User Auth, Theme Selector, OpenRouter Config and Cloud Button */}
           <div className="flex items-center gap-2.5">
+            {/* Theme Selector Dropdown */}
+            <div className="relative">
+              <button
+                id="theme-selector-btn"
+                onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)}
+                className="px-3 py-2 rounded-xl border border-neutral-200/80 dark:border-neutral-700 bg-white/90 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-baloo font-bold flex items-center gap-1.5 shadow-2xs transition"
+                title="Change Theme"
+              >
+                <Palette className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <span className="capitalize">{theme}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+              </button>
+
+              {isThemeDropdownOpen && (
+                <div 
+                  className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-xl z-50 p-2 space-y-1"
+                >
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+                    Select Theme
+                  </div>
+                  {availableThemes.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setTheme(t.id);
+                        setIsThemeDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition ${
+                        theme === t.id
+                          ? 'bg-neutral-950 dark:bg-neutral-800 text-white shadow-xs'
+                          : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-4 h-4 rounded-full border ${t.borderPreview} ${t.bgPreview} flex items-center justify-center p-0.5`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${t.accentPreview}`} />
+                        </div>
+                        <span>{t.name}</span>
+                      </div>
+                      {theme === t.id && <Check className="w-4 h-4 text-amber-400" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               id="openrouter-settings-header-btn"
               onClick={() => setActiveTab('settings')}

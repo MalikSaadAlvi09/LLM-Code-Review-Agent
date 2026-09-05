@@ -130,6 +130,7 @@ export const sendReviewFollowUp = onCall({ region: 'us-central1', timeoutSeconds
 });
 
 export const registerGitHubConnection = onCall({ region: 'us-central1', enforceAppCheck: false }, async request => {
+  const db = getFirestore();
   const uid = requireAuth(request);
   const { accessToken } = request.data || {};
   if (!accessToken) throw new HttpsError('invalid-argument', 'GitHub access token is required.');
@@ -145,12 +146,28 @@ export const registerGitHubConnection = onCall({ region: 'us-central1', enforceA
   if (!ghRes.ok) throw new HttpsError('unauthenticated', 'Invalid or expired GitHub access token.');
   const ghUser = await ghRes.json();
 
-  const db = getFirestore();
   await db.doc(`users/${uid}/connections/github`).set({
+    provider: 'github',
     connected: true,
     username: ghUser.login,
     avatarUrl: ghUser.avatar_url,
     githubId: ghUser.id,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await db.doc(`users/${uid}/githubConnections/primary`).set({
+    provider: 'github',
+    githubUserId: ghUser.id,
+    login: ghUser.login,
+    avatarUrl: ghUser.avatar_url,
+    status: 'connected',
+    connectedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  // Store access token in protected secretConnections subcollection
+  await db.doc(`users/${uid}/secretConnections/github`).set({
+    accessToken,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
@@ -160,3 +177,6 @@ export const registerGitHubConnection = onCall({ region: 'us-central1', enforceA
     avatarUrl: ghUser.avatar_url,
   };
 });
+
+export { importGitHubRepository } from './github/importGitHubRepository';
+
