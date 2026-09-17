@@ -5,6 +5,7 @@ import { IMPORT_LIMITS, ImportedCodeFile, ImportedProject, ProjectSourceType } f
 import { persistImportedProject } from '../lib/firebaseProjects';
 import { useAuth } from '../context/AuthContext';
 import { functions, httpsCallable } from '../lib/firebase';
+import { detectLanguage, getLanguageName, isIgnoredPath, isSecretFile } from '../lib/languageDetection';
 
 interface CodebaseImportProps {
   project: ImportedProject | null;
@@ -14,49 +15,23 @@ interface CodebaseImportProps {
   onConnectGitHub?: () => Promise<void>;
 }
 
-const LANGUAGE_BY_EXTENSION: Record<string, string> = {
-  '.py': 'python', '.js': 'javascript', '.jsx': 'javascript', '.ts': 'typescript', '.tsx': 'typescript',
-  '.java': 'java', '.c': 'c', '.h': 'c', '.cc': 'cpp', '.cpp': 'cpp', '.hpp': 'cpp', '.cs': 'csharp',
-  '.go': 'go', '.rs': 'rust', '.php': 'php', '.rb': 'ruby', '.swift': 'swift', '.kt': 'kotlin', '.dart': 'dart',
-  '.html': 'html', '.css': 'css', '.scss': 'scss', '.sql': 'sql', '.sh': 'shell', '.bash': 'shell', '.ps1': 'powershell',
-  '.json': 'json', '.yaml': 'yaml', '.yml': 'yaml', '.xml': 'xml', '.md': 'markdown', '.toml': 'toml', '.tf': 'terraform',
-};
-
-const IGNORED_PARTS = new Set(['.git', '.github', 'node_modules', 'vendor', 'dist', 'build', 'coverage', '.next', '.nuxt', '.cache', 'venv', '.venv', 'env', '__pycache__', '.pytest_cache', '.mypy_cache', '.idea', '.vscode', 'target', 'bin', 'obj', 'pods', 'deriveddata']);
-const BINARY_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.mp4', '.mov', '.avi', '.exe', '.dll', '.so', '.dylib', '.db', '.sqlite', '.woff', '.woff2', '.ttf', '.class', '.pyc', '.map', '.lock', '.log']);
-
-function extensionFor(path: string) {
-  const name = path.split('/').pop() || path;
-  if (name.toLowerCase() === 'dockerfile' || name.toLowerCase().startsWith('docker-compose')) return '';
-  const dot = name.lastIndexOf('.');
-  return dot >= 0 ? name.slice(dot).toLowerCase() : '';
-}
-
-function classifyPath(path: string) {
-  const normalized = path.replaceAll('\\', '/');
-  const parts = normalized.split('/');
-  const name = parts.at(-1)?.toLowerCase() || '';
-  if (parts.some(part => IGNORED_PARTS.has(part.toLowerCase()))) return { status: 'ignored' as const, reason: 'Generated, dependency, cache, or metadata directory.' };
-  if (name === '.env' || (name !== '.env.example' && (name.includes('secret') || name.includes('credentials') || name.endsWith('.pem') || name.endsWith('.key')))) return { status: 'ignored' as const, reason: 'Potential secret or credential file.' };
-  if (name.endsWith('.min.js') || name.endsWith('.map') || name.endsWith('.lock') || name.endsWith('.log') || name.endsWith('.pyc') || name.endsWith('.class')) return { status: 'ignored' as const, reason: 'Generated or lock file excluded from normal review.' };
-  const extension = extensionFor(normalized);
-  if (BINARY_EXTENSIONS.has(extension)) return { status: 'unsupported' as const, reason: 'Binary or generated file cannot be reviewed as source.' };
-  if (!LANGUAGE_BY_EXTENSION[extension] && name !== 'dockerfile' && !name.startsWith('docker-compose')) return { status: 'unsupported' as const, reason: 'File type is not a supported source or configuration format.' };
-  return { status: 'ready' as const };
-}
-
 async function fileToImported(file: File, path = file.name, selected = true): Promise<ImportedCodeFile> {
-  const extension = extensionFor(path);
-  const classification = classifyPath(path);
-  if (file.size > IMPORT_LIMITS.maxSingleFileBytes) {
-    return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: LANGUAGE_BY_EXTENSION[extension] || 'unknown', size: file.size, content: '', selected: false, status: 'error', reason: `File exceeds the ${IMPORT_LIMITS.maxSingleFileBytes / 1024 / 1024} MB limit.` };
+  const extension = path.includes('.') ? path.slice(path.lastIndexOf('.')).toLowerCase() : '';
+  if (isIgnoredPath(path)) {
+    return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: 'unknown', size: file.size, content: '', selected: false, status: 'ignored', reason: 'Generated, dependency, build output, or metadata directory.' };
   }
-  if (classification.status !== 'ready') {
-    return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: LANGUAGE_BY_EXTENSION[extension] || 'unknown', size: file.size, content: '', selected: false, ...classification };
+  if (isSecretFile(path)) {
+    return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: 'unknown', size: file.size, content: '', selected: false, status: 'ignored', reason: 'Potential secret or credential file excluded for security.' };
+  }
+  if (file.size > IMPORT_LIMITS.maxSingleFileBytes) {
+    return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: 'unknown', size: file.size, content: '', selected: false, status: 'error', reason: `File exceeds the ${IMPORT_LIMITS.maxSingleFileBytes / 1024 / 1024} MB limit.` };
   }
   const content = await file.text();
-  if (content.includes('\0')) return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: 'unknown', size: file.size, content: '', selected: false, status: 'unsupported', reason: 'Binary content detected.' };
-  return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: LANGUAGE_BY_EXTENSION[extension] || (path.toLowerCase().includes('dockerfile') ? 'dockerfile' : 'text'), size: file.size, content, selected, status: 'ready' };
+  if (content.includes('\0')) {
+    return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: 'unknown', size: file.size, content: '', selected: false, status: 'unsupported', reason: 'Binary content detected.' };
+  }
+  const langInfo = detectLanguage(path, content);
+  return { id: crypto.randomUUID(), path, name: path.split('/').pop() || path, extension, language: langInfo.id, size: file.size, content, selected, status: 'ready' };
 }
 
 async function collectEntries(items: DataTransferItemList) {
@@ -345,6 +320,22 @@ export function CodebaseImport({ project, onProjectChange, onReviewProject, user
     {project && <div className="border-t border-neutral-200 pt-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><div><span className="text-sm font-bold text-neutral-900">{project.name}</span><span className="ml-2 text-[10px] uppercase text-neutral-500">{project.sourceType}</span>{project.repository?.branch && <span className="ml-2 text-[10px] font-mono text-neutral-500">branch: {project.repository.branch}</span>}</div><button onClick={() => onProjectChange(null)} className="text-xs text-rose-600 flex items-center gap-1"><Trash2 className="w-3 h-3" />Clear Project</button></div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs"><span>{project.files.length} imported</span><span>{readyFiles.length} supported</span><span>{project.files.filter(file => file.status !== 'ready').length} ignored</span><span>{lines} selected lines</span><span>~{Math.ceil(selectedFiles.reduce((total, file) => total + file.content.length, 0) / 4)} tokens</span></div>
+      {readyFiles.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+          <span className="font-semibold text-neutral-600">Languages:</span>
+          {Object.entries(
+            readyFiles.reduce((acc, f) => {
+              const lang = getLanguageName(f.language);
+              acc[lang] = (acc[lang] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>)
+          ).map(([lang, count]) => (
+            <span key={lang} className="px-2 py-0.5 rounded-md bg-neutral-100 border border-neutral-200 text-neutral-700 font-mono">
+              {lang}: {count}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2"><div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-neutral-50 border border-neutral-200 flex-1 min-w-[180px]"><Search className="w-3.5 h-3.5 text-neutral-400" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search files" className="bg-transparent outline-none text-xs w-full" /></div><button onClick={() => onProjectChange({ ...project, files: project.files.map(file => ({ ...file, selected: file.status === 'ready' })) })} className="text-xs font-semibold px-2 py-1 rounded-lg border">Select all</button><button onClick={() => onProjectChange({ ...project, files: project.files.map(file => ({ ...file, selected: false })) })} className="text-xs font-semibold px-2 py-1 rounded-lg border">Clear selection</button><button onClick={onReviewProject} disabled={!selectedFiles.length || !onReviewProject} className="text-xs font-semibold px-2 py-1 rounded-lg bg-neutral-900 text-white disabled:opacity-40">Review selected files</button><button onClick={() => { onProjectChange({ ...project, files: project.files.map(file => ({ ...file, selected: file.status === 'ready' })) }); onReviewProject?.(); }} disabled={!readyFiles.length || !onReviewProject} className="text-xs font-semibold px-2 py-1 rounded-lg border disabled:opacity-40">Review complete codebase</button></div>
       <button onClick={() => setExpanded(!expanded)} className="text-xs font-semibold flex items-center gap-1">{expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}File tree</button>
       {expanded && <div className="max-h-48 overflow-y-auto space-y-1">{visibleFiles.map(file => <div key={file.id} className="flex items-center gap-2 text-xs px-2 py-1 rounded hover:bg-neutral-50"><input type="checkbox" checked={file.selected} disabled={file.status !== 'ready'} onChange={() => onProjectChange({ ...project, files: project.files.map(item => item.id === file.id ? { ...item, selected: !item.selected } : item) })} /><span className="font-mono truncate flex-1">{file.path}</span><span className={file.status === 'ready' ? 'text-emerald-600' : 'text-neutral-400'}>{file.status === 'ready' ? <Check className="w-3 h-3" /> : file.reason}</span><button onClick={() => onProjectChange({ ...project, files: project.files.filter(item => item.id !== file.id) })} title="Remove file"><Trash2 className="w-3 h-3 text-rose-500" /></button></div>)}</div>}

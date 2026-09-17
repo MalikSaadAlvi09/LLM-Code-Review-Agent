@@ -59,15 +59,21 @@ export function parseGitHubUrl(githubUrl: string): ParsedGitHubUrl {
   return { owner, repository, branch };
 }
 
-const ALLOWED_EXTENSIONS = /\.(py|js|jsx|ts|tsx|java|c|h|cc|cpp|hpp|cs|go|rs|php|rb|swift|kt|dart|html|css|scss|sql|sh|bash|ps1|json|ya?ml|xml|md|toml|tf)$/i;
-const IGNORED_PATHS = /(^|\/)(\.git|\.github|node_modules|vendor|dist|build|coverage|\.next|\.nuxt|\.cache|venv|\.venv|env|__pycache__|\.pytest_cache|\.mypy_cache|\.idea|\.vscode|target|bin|obj|Pods|DerivedData)(\/|$)|\.min\.js$|\.map$|\.lock$|\.log$|\.pyc$|\.class$/i;
+const ALLOWED_EXTENSIONS = /\.(py|pyw|js|jsx|mjs|cjs|ts|tsx|mts|cts|java|c|h|cc|cpp|cxx|hpp|hh|cs|go|rs|php|rb|swift|kt|kts|dart|scala|sc|r|jl|lua|pl|pm|sh|bash|zsh|ps1|psm1|sql|sol|m|mm|asm|s|html|htm|css|scss|less|json|jsonc|ya?ml|xml|toml|tf|tfvars|md|graphql|gql|proto)$/i;
+const IGNORED_PATHS = /(^|\/)(\.git|\.github|node_modules|vendor|dist|build|coverage|\.next|\.nuxt|\.cache|venv|\.venv|env|__pycache__|\.pytest_cache|\.mypy_cache|\.idea|\.vscode|target|bin|obj|Pods|DerivedData)(\/|$)|\.min\.(js|css)$|\.map$|\.lock$|\.log$|\.pyc$|\.class$|\.env/i;
 
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
-  '.py': 'python', '.js': 'javascript', '.jsx': 'javascript', '.ts': 'typescript', '.tsx': 'typescript',
-  '.java': 'java', '.c': 'c', '.h': 'c', '.cc': 'cpp', '.cpp': 'cpp', '.hpp': 'cpp', '.cs': 'csharp',
-  '.go': 'go', '.rs': 'rust', '.php': 'php', '.rb': 'ruby', '.swift': 'swift', '.kt': 'kotlin', '.dart': 'dart',
-  '.html': 'html', '.css': 'css', '.scss': 'scss', '.sql': 'sql', '.sh': 'shell', '.bash': 'shell', '.ps1': 'powershell',
-  '.json': 'json', '.yaml': 'yaml', '.yml': 'yaml', '.xml': 'xml', '.md': 'markdown', '.toml': 'toml', '.tf': 'terraform',
+  '.py': 'python', '.pyw': 'python',
+  '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
+  '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript', '.cts': 'typescript',
+  '.java': 'java', '.c': 'c', '.h': 'c', '.cc': 'cpp', '.cpp': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hh': 'cpp',
+  '.cs': 'csharp', '.go': 'go', '.rs': 'rust', '.php': 'php', '.rb': 'ruby', '.swift': 'swift',
+  '.kt': 'kotlin', '.kts': 'kotlin', '.dart': 'dart', '.scala': 'scala', '.r': 'r', '.R': 'r',
+  '.jl': 'julia', '.lua': 'lua', '.pl': 'perl', '.pm': 'perl', '.sh': 'shell', '.bash': 'shell', '.zsh': 'shell',
+  '.ps1': 'powershell', '.psm1': 'powershell', '.sql': 'sql', '.sol': 'solidity', '.m': 'objective-c', '.mm': 'objective-cpp',
+  '.asm': 'assembly', '.s': 'assembly', '.S': 'assembly', '.html': 'html', '.htm': 'html', '.css': 'css', '.scss': 'scss',
+  '.less': 'less', '.json': 'json', '.jsonc': 'json', '.yaml': 'yaml', '.yml': 'yaml', '.xml': 'xml', '.toml': 'toml',
+  '.tf': 'terraform', '.tfvars': 'terraform', '.md': 'markdown', '.graphql': 'graphql', '.gql': 'graphql', '.proto': 'protobuf',
 };
 
 export const importGitHubRepository = onCall(

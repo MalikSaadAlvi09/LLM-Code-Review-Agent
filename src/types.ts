@@ -1,9 +1,105 @@
+export type SeverityLevel = 'Critical' | 'High' | 'Medium' | 'Low' | 'Informational';
+export type EvidenceSource = 'AI Review' | 'Compiler' | 'Linter' | 'Dependency Scanner' | 'Test Runner';
+export type FindingStatus = 'confirmed' | 'suspected';
+export type LocationType = 'line' | 'file' | 'project';
+
+export type FindingState = 'suspected' | 'tool_reported' | 'reproduced' | 'suggested_fix' | 'applied_fix' | 'validated';
+export type ValidationStatus = 'passed' | 'failed' | 'unavailable' | 'not_run';
+
+export interface PatchInfo {
+  patchId: string;
+  diff: string;
+  replacementCode: string;
+  originalHash: string;
+  status: 'suggested' | 'applied' | 'conflict' | 'reverted';
+  appliedAt?: string;
+}
+
+export interface ReproductionTestInfo {
+  framework: string;
+  testCode: string;
+  runResult?: {
+    baselineFailed: boolean;
+    postFixPassed: boolean;
+    exitCode: number;
+    output: string;
+    isExecutedInSandbox: boolean;
+  };
+}
+
+export interface SuppressionInfo {
+  isSuppressed: boolean;
+  reason?: string;
+  suppressedBy?: string;
+  timestamp?: string;
+}
+
+export interface SecretInfo {
+  detected: boolean;
+  category?: string;
+  maskedSnippet?: string;
+  remediationAdvice?: string;
+}
+
 export interface Finding {
+  id?: string;
   line: number;
+  startLine?: number;
+  endLine?: number;
+  column?: number;
+  file?: string;
+  scope?: string;
+  codeSnippet?: string;
   title: string;
-  severity: 'bug' | 'logic' | 'style';
+  severity: SeverityLevel | 'bug' | 'logic' | 'style';
+  category?: string;
+  language?: string;
+  evidenceSource?: EvidenceSource;
+  status?: FindingStatus;
+  findingState?: FindingState;
+  validationStatus?: ValidationStatus;
   description: string;
+  triggerImpact?: string;
   suggested_fix: string;
+  fixExplanation?: string;
+  uncertaintyNote?: string;
+  locationType?: LocationType;
+  commitSha?: string;
+  callerLocation?: { file: string; line: number };
+  handlerLocation?: { file: string; line: number };
+  patch?: PatchInfo;
+  reproductionTest?: ReproductionTestInfo;
+  suppression?: SuppressionInfo;
+  secretInfo?: SecretInfo;
+}
+
+export interface CustomRule {
+  id: string;
+  name: string;
+  category: string;
+  pattern: string;
+  severity: SeverityLevel;
+  description: string;
+  enabled: boolean;
+}
+
+export interface PullRequestFile {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  additions: number;
+  deletions: number;
+  patch?: string;
+}
+
+export interface PullRequestInfo {
+  repoOwner: string;
+  repoName: string;
+  prNumber: number;
+  title: string;
+  branch: string;
+  headSha: string;
+  baseSha: string;
+  changedFiles: PullRequestFile[];
 }
 
 export interface ReviewResult {
@@ -11,6 +107,15 @@ export interface ReviewResult {
   findings: Finding[];
   qualityScore: number;
   verdict: 'Needs Improvement' | 'Approved' | 'Critical Issues';
+  languagesSummary?: Record<string, number>;
+  filesDiscovered?: number;
+  filesReviewed?: number;
+  filesSkipped?: number;
+  filesFailed?: number;
+  coverageDetails?: {
+    skippedFiles?: { path: string; reason: string }[];
+    failedFiles?: { path: string; reason: string }[];
+  };
 }
 
 export interface ChatMessage {

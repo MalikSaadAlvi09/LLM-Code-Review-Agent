@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "Starting backup process..."
+tar -czf backup.tar.gz /var/log
